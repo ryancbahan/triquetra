@@ -23,6 +23,12 @@ public:
     bool producesMidi() const override;
     bool isMidiEffect() const override;
     double getTailLengthSeconds() const override;
+    
+    std::array<float, 4> lfoPhases;
+    std::array<float, 4> lfoFrequencies;
+    float pitchShiftDepth;
+    std::array<std::vector<float>, 4> delayLines;
+    std::array<float, 4> fractionalDelays;
 
     int getNumPrograms() override;
     int getCurrentProgram() override;
@@ -43,8 +49,6 @@ private:
     std::array<std::array<float, 4>, 4> hadamardMatrix;
 
     // LFO-related members
-    std::array<float, 4> lfoPhases;
-    std::array<float, 4> lfoFrequencies;
     float lfoDepth;
     void initializeLowpassFilter(double sampleRate);
 
