@@ -51,6 +51,10 @@ private:
     // LFO-related members
     float lfoDepth;
     void initializeLowpassFilter(double sampleRate);
+    
+    std::array<float, 4> phaseOffsets;
+     std::array<float, 4> phaseIncrements;
+     float modulationDepth;
 
     void initializeHadamardMatrix();
     float getInterpolatedSample(float delayTime);

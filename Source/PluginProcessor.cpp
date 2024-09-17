@@ -24,10 +24,9 @@ TriquetraAudioProcessor::TriquetraAudioProcessor()
 {
     basedelayTimes = {0.0443f * 2, 0.0531f * 2, 0.0667f * 2, 0.0798f * 2}; // Prime number ratios for less repetitive echoes
     feedback = 0.6f;
-    lfoFrequencies = {0.1f, 0.13f, 0.17f, 0.19f}; // Very slow LFOs
-    pitchShiftDepth = 0.001f; // 0.01% pitch shift (adjust as needed)
-    lfoPhases.fill(0.0f);
-    fractionalDelays.fill(0.0f);
+    modulationDepth = 0.0015f; // Adjust as needed
+    phaseOffsets.fill(0.0f);
+    phaseIncrements = {0.00001f, 0.000013f, 0.000017f, 0.000019f}; // Very slow changes
     initializeHadamardMatrix();
 }
 
@@ -240,21 +239,12 @@ void TriquetraAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, ju
 
     for (int sample = 0; sample < buffer.getNumSamples(); ++sample)
     {
-        // Update LFOs and calculate pitch shifts
+        // Update phase offsets
         for (int i = 0; i < 4; ++i)
         {
-            lfoPhases[i] += lfoFrequencies[i] / sampleRate;
-            if (lfoPhases[i] >= 1.0f)
-                lfoPhases[i] -= 1.0f;
-
-            float lfoValue = std::sin(2.0f * juce::MathConstants<float>::pi * lfoPhases[i]);
-            fractionalDelays[i] += pitchShiftDepth * lfoValue;
-            
-            // Wrap fractional delay between 0 and 1
-            while (fractionalDelays[i] >= 1.0f)
-                fractionalDelays[i] -= 1.0f;
-            while (fractionalDelays[i] < 0.0f)
-                fractionalDelays[i] += 1.0f;
+            phaseOffsets[i] += phaseIncrements[i];
+            if (phaseOffsets[i] >= 1.0f)
+                phaseOffsets[i] -= 1.0f;
         }
 
         float inputSample = 0.0f;
@@ -267,17 +257,17 @@ void TriquetraAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, ju
         std::array<float, 4> delayOutputs;
         for (int i = 0; i < 4; ++i)
         {
-            int baseDelaySamples = static_cast<int>(basedelayTimes[i] * sampleRate);
-            float delayTimeSamples = baseDelaySamples + fractionalDelays[i];
+            int delaySamples = static_cast<int>(basedelayTimes[i] * sampleRate);
+            int readPos = (writePosition - delaySamples + delayBufferSize) % delayBufferSize;
             
-            int readPos = (writePosition - baseDelaySamples + delayBufferSize) % delayBufferSize;
-            int nextPos = (readPos + 1) % delayBufferSize;
+            // Apply phase offset
+            float phaseShift = modulationDepth * std::sin(2.0f * juce::MathConstants<float>::pi * phaseOffsets[i]);
+            int shiftedPos = (readPos + static_cast<int>(phaseShift * sampleRate) + delayBufferSize) % delayBufferSize;
             
-            float fraction = fractionalDelays[i];
-            delayOutputs[i] = delayLines[i][readPos] + fraction * (delayLines[i][nextPos] - delayLines[i][readPos]);
+            delayOutputs[i] = delayBuffer[shiftedPos];
         }
 
-        // Apply Hadamard matrix to mix delay outputs
+        // Apply Hadamard matrix to mix phase-shifted outputs
         std::array<float, 4> mixedOutputs;
         for (int i = 0; i < 4; ++i)
         {
@@ -300,10 +290,7 @@ void TriquetraAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, ju
         // Apply lowpass filter to the wet signal
         newSample = lowpassFilter[0].processSample(newSample);
 
-        for (int i = 0; i < 4; ++i)
-        {
-            delayLines[i][writePosition] = newSample;
-        }
+        delayBuffer[writePosition] = newSample;
         writePosition = (writePosition + 1) % delayBufferSize;
 
         float outputSample = inputSample;
