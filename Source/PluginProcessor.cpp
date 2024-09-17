@@ -24,7 +24,8 @@ TriquetraAudioProcessor::TriquetraAudioProcessor()
 {
     basedelayTimes = {0.0443f * 2, 0.0531f * 2, 0.0667f * 2, 0.0798f * 2}; // Prime number ratios for less repetitive echoes
     feedback = 0.6f;
-    modulationDepth = 0.0015f; // Adjust as needed
+    modulationDepth = 0.0025f; // Adjust as needed
+    modulationFrequencies = {0.1f, 0.13f, 0.17f, 0.19f}; // Different frequencies for each delay line
     phaseOffsets.fill(0.0f);
     phaseIncrements = {0.00001f, 0.000013f, 0.000017f, 0.000019f}; // Very slow changes
     initializeHadamardMatrix();
@@ -239,12 +240,12 @@ void TriquetraAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, ju
 
     for (int sample = 0; sample < buffer.getNumSamples(); ++sample)
     {
-        // Update phase offsets
+        // Update modulation phases
         for (int i = 0; i < 4; ++i)
         {
-            phaseOffsets[i] += phaseIncrements[i];
-            if (phaseOffsets[i] >= 1.0f)
-                phaseOffsets[i] -= 1.0f;
+            modulationPhases[i] += modulationFrequencies[i] / sampleRate;
+            if (modulationPhases[i] >= 1.0f)
+                modulationPhases[i] -= 1.0f;
         }
 
         float inputSample = 0.0f;
@@ -257,17 +258,25 @@ void TriquetraAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, ju
         std::array<float, 4> delayOutputs;
         for (int i = 0; i < 4; ++i)
         {
-            int delaySamples = static_cast<int>(basedelayTimes[i] * sampleRate);
-            int readPos = (writePosition - delaySamples + delayBufferSize) % delayBufferSize;
+            float baseDelay = basedelayTimes[i] * sampleRate;
             
-            // Apply phase offset
-            float phaseShift = modulationDepth * std::sin(2.0f * juce::MathConstants<float>::pi * phaseOffsets[i]);
-            int shiftedPos = (readPos + static_cast<int>(phaseShift * sampleRate) + delayBufferSize) % delayBufferSize;
+            // Enhanced modulation: use non-linear function for more dramatic effect
+            float modulation = std::sin(2.0f * juce::MathConstants<float>::pi * modulationPhases[i]);
+            modulation = std::pow(std::abs(modulation), 0.5f) * std::copysign(1.0f, modulation); // Non-linear shaping
             
-            delayOutputs[i] = delayBuffer[shiftedPos];
+            float modulatedDelay = baseDelay + (modulation * modulationDepth * baseDelay);
+            
+            // Ensure delay doesn't go negative
+            modulatedDelay = std::max(modulatedDelay, 0.0f);
+            
+            int readPos = static_cast<int>(writePosition - modulatedDelay + delayBufferSize) % delayBufferSize;
+            int nextPos = (readPos + 1) % delayBufferSize;
+            float fraction = modulatedDelay - std::floor(modulatedDelay);
+            
+            delayOutputs[i] = delayBuffer[readPos] + fraction * (delayBuffer[nextPos] - delayBuffer[readPos]);
         }
 
-        // Apply Hadamard matrix to mix phase-shifted outputs
+        // Apply Hadamard matrix to mix modulated outputs
         std::array<float, 4> mixedOutputs;
         for (int i = 0; i < 4; ++i)
         {

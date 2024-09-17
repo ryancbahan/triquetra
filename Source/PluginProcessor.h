@@ -55,7 +55,8 @@ private:
     std::array<float, 4> phaseOffsets;
      std::array<float, 4> phaseIncrements;
      float modulationDepth;
-
+    std::array<float, 4> modulationFrequencies;
+    std::array<float, 4> modulationPhases;
     void initializeHadamardMatrix();
     float getInterpolatedSample(float delayTime);
     float generateLFOSample(int lfoIndex);
