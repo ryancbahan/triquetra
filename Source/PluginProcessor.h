@@ -37,9 +37,13 @@ public:
     void setStateInformation (const void* data, int sizeInBytes) override;
 
 private:
-    juce::dsp::DelayLine<float, juce::dsp::DelayLineInterpolationTypes::Linear> delayLine;
+    std::array<juce::dsp::DelayLine<float, juce::dsp::DelayLineInterpolationTypes::Linear>, 4> delayLines;
     float delayTimeInSeconds;
     float feedback;
+    std::array<std::array<float, 4>, 4> hadamardMatrix;
+    std::array<float, 4> delayStates;
+
+    void initializeHadamardMatrix();
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (TriquetraAudioProcessor)
 };

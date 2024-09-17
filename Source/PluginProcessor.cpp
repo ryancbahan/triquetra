@@ -22,8 +22,27 @@ TriquetraAudioProcessor::TriquetraAudioProcessor()
                        )
 #endif
 {
+    initializeHadamardMatrix();
+    delayStates.fill(0.0f);
     delayTimeInSeconds = 0.5f; // 0.5 seconds delay
     feedback = 0.3f; // Reduced feedback to avoid excessive distortion
+}
+
+void TriquetraAudioProcessor::initializeHadamardMatrix()
+{
+    // 4x4 Hadamard matrix
+    hadamardMatrix = {{
+        {1.0f,  1.0f,  1.0f,  1.0f},
+        {1.0f, -1.0f,  1.0f, -1.0f},
+        {1.0f,  1.0f, -1.0f, -1.0f},
+        {1.0f, -1.0f, -1.0f,  1.0f}
+    }};
+
+    // Normalize the matrix
+    float normalizationFactor = 0.5f; // 1 / sqrt(4)
+    for (auto& row : hadamardMatrix)
+        for (auto& element : row)
+            element *= normalizationFactor;
 }
 
 TriquetraAudioProcessor::~TriquetraAudioProcessor()
@@ -98,11 +117,20 @@ void TriquetraAudioProcessor::prepareToPlay (double sampleRate, int samplesPerBl
     juce::dsp::ProcessSpec spec;
     spec.sampleRate = sampleRate;
     spec.maximumBlockSize = samplesPerBlock;
-    spec.numChannels = getTotalNumOutputChannels();
+    spec.numChannels = 1; // Each delay line is mono
 
-    delayLine.prepare(spec);
-    delayLine.setMaximumDelayInSamples(sampleRate * 2.0); // Allow for up to 2 seconds of delay
-    delayLine.setDelay(delayTimeInSeconds * sampleRate);
+    const float maxDelayInSeconds = 0.2f; // 200ms maximum delay
+    const int maxDelaySamples = static_cast<int>(sampleRate * maxDelayInSeconds);
+
+    for (auto& delayLine : delayLines)
+    {
+        delayLine.prepare(spec);
+        delayLine.setMaximumDelayInSamples(maxDelaySamples);
+        
+        // Ensure delay time doesn't exceed maximum
+        float actualDelayTime = juce::jmin(delayTimeInSeconds, maxDelayInSeconds);
+        delayLine.setDelay(actualDelayTime * sampleRate);
+    }
 }
 
 void TriquetraAudioProcessor::releaseResources()
@@ -146,18 +174,48 @@ void TriquetraAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, ju
     for (auto i = totalNumInputChannels; i < totalNumOutputChannels; ++i)
         buffer.clear (i, 0, buffer.getNumSamples());
 
-    for (int channel = 0; channel < totalNumInputChannels; ++channel)
+    for (int sample = 0; sample < buffer.getNumSamples(); ++sample)
     {
-        auto* channelData = buffer.getWritePointer (channel);
-
-        for (int sample = 0; sample < buffer.getNumSamples(); ++sample)
+        float inputSample = 0.0f;
+        for (int channel = 0; channel < totalNumInputChannels; ++channel)
         {
-            float delayedSample = delayLine.popSample(channel);
-            float inputSample = channelData[sample];
-            float outputSample = inputSample + delayedSample;
+            inputSample += buffer.getSample(channel, sample);
+        }
+        inputSample /= static_cast<float>(totalNumInputChannels); // Average input across channels
 
-            delayLine.pushSample(channel, inputSample + delayedSample * feedback);
-            channelData[sample] = outputSample;
+        // Process through delay network
+        std::array<float, 4> delayOutputs;
+        for (int i = 0; i < 4; ++i)
+        {
+            delayOutputs[i] = delayLines[i].popSample(0);
+        }
+
+        std::array<float, 4> feedbackSamples;
+        for (int i = 0; i < 4; ++i)
+        {
+            feedbackSamples[i] = 0.0f;
+            for (int j = 0; j < 4; ++j)
+            {
+                feedbackSamples[i] += hadamardMatrix[i][j] * delayOutputs[j];
+            }
+            feedbackSamples[i] *= feedback;
+        }
+
+        for (int i = 0; i < 4; ++i)
+        {
+            delayLines[i].pushSample(0, inputSample + feedbackSamples[i]);
+        }
+
+        float outputSample = inputSample;
+        for (int i = 0; i < 4; ++i)
+        {
+            outputSample += delayOutputs[i] * 0.25f; // Mix in delay outputs
+        }
+
+        // Write output to all channels
+        for (int channel = 0; channel < totalNumOutputChannels; ++channel)
+        {
+            buffer.setSample(channel, sample, outputSample);
         }
     }
 }
