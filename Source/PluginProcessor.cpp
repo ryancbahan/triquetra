@@ -22,8 +22,11 @@ TriquetraAudioProcessor::TriquetraAudioProcessor()
                        )
 #endif
 {
-    delayTimes = {0.0443f * 2, 0.0531f * 2, 0.0667f * 2, 0.0798f * 2}; // Prime number ratios for less repetitive echoes
+    basedelayTimes = {0.0443f * 2, 0.0531f * 2, 0.0667f * 2, 0.0798f * 2}; // Prime number ratios for less repetitive echoes
     feedback = 0.6f;
+    lfoFrequencies = {0.1f, 0.13f, 0.17f, 0.19f}; // Prime number ratios for less repetitive modulation
+    lfoDepth = 0.01f; // 10ms modulation depth
+    lfoPhases.fill(0.0f);
     initializeHadamardMatrix();
 }
 
@@ -116,10 +119,7 @@ void TriquetraAudioProcessor::prepareToPlay (double sampleRate, int samplesPerBl
     delayBuffer.resize(delayBufferSize, 0.0f);
     writePosition = 0;
 
-    for (int i = 0; i < 4; ++i)
-    {
-        readPositions[i] = static_cast<int>(delayTimes[i] * sampleRate);
-    }
+    modulatedDelayTimes = basedelayTimes;
 }
 
 void TriquetraAudioProcessor::releaseResources()
@@ -127,6 +127,39 @@ void TriquetraAudioProcessor::releaseResources()
     // When playback stops, you can use this as an opportunity to free up any
     // spare memory, etc.
 }
+
+float TriquetraAudioProcessor::generateLFOSample(int lfoIndex)
+{
+    float phase = lfoPhases[lfoIndex];
+    float sample = std::sin(2.0f * juce::MathConstants<float>::pi * phase);
+    return sample;
+}
+
+void TriquetraAudioProcessor::updateLFOs()
+{
+    for (int i = 0; i < 4; ++i)
+    {
+        lfoPhases[i] += lfoFrequencies[i] / getSampleRate();
+        if (lfoPhases[i] >= 1.0f)
+            lfoPhases[i] -= 1.0f;
+    }
+}
+
+void TriquetraAudioProcessor::applyHadamardToLFOs(std::array<float, 4>& lfoOutputs)
+{
+    std::array<float, 4> mixedLFOs;
+    for (int i = 0; i < 4; ++i)
+    {
+        mixedLFOs[i] = 0.0f;
+        for (int j = 0; j < 4; ++j)
+        {
+            mixedLFOs[i] += hadamardMatrix[i][j] * lfoOutputs[j];
+        }
+    }
+    lfoOutputs = mixedLFOs;
+}
+
+
 
 #ifndef JucePlugin_PreferredChannelConfigurations
 bool TriquetraAudioProcessor::isBusesLayoutSupported (const BusesLayout& layouts) const
@@ -176,6 +209,20 @@ void TriquetraAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, ju
 
     for (int sample = 0; sample < buffer.getNumSamples(); ++sample)
     {
+        // Generate and mix LFO signals
+        std::array<float, 4> lfoOutputs;
+        for (int i = 0; i < 4; ++i)
+        {
+            lfoOutputs[i] = generateLFOSample(i);
+        }
+        applyHadamardToLFOs(lfoOutputs);
+
+        // Modulate delay times
+        for (int i = 0; i < 4; ++i)
+        {
+            modulatedDelayTimes[i] = basedelayTimes[i] + lfoOutputs[i] * lfoDepth;
+        }
+
         float inputSample = 0.0f;
         for (int channel = 0; channel < totalNumInputChannels; ++channel)
         {
@@ -186,7 +233,7 @@ void TriquetraAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, ju
         std::array<float, 4> delayOutputs;
         for (int i = 0; i < 4; ++i)
         {
-            delayOutputs[i] = getInterpolatedSample(delayTimes[i]);
+            delayOutputs[i] = getInterpolatedSample(modulatedDelayTimes[i]);
         }
 
         float feedbackSample = 0.0f;
@@ -215,6 +262,8 @@ void TriquetraAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, ju
         {
             buffer.setSample(channel, sample, outputSample);
         }
+
+        updateLFOs();
     }
 }
 

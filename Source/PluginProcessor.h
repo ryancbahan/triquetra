@@ -36,13 +36,21 @@ private:
     std::vector<float> delayBuffer;
     int delayBufferSize;
     int writePosition;
-    std::array<int, 4> readPositions;
-    std::array<float, 4> delayTimes;
+    std::array<float, 4> basedelayTimes;
+    std::array<float, 4> modulatedDelayTimes;
     float feedback;
     std::array<std::array<float, 4>, 4> hadamardMatrix;
 
+    // LFO-related members
+    std::array<float, 4> lfoPhases;
+    std::array<float, 4> lfoFrequencies;
+    float lfoDepth;
+
     void initializeHadamardMatrix();
     float getInterpolatedSample(float delayTime);
+    float generateLFOSample(int lfoIndex);
+    void updateLFOs();
+    void applyHadamardToLFOs(std::array<float, 4>& lfoOutputs);
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (TriquetraAudioProcessor)
 };
