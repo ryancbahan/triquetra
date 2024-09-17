@@ -30,6 +30,21 @@ TriquetraAudioProcessor::TriquetraAudioProcessor()
     initializeHadamardMatrix();
 }
 
+void TriquetraAudioProcessor::initializeLowpassFilter(double sampleRate)
+{
+    // Initialize lowpass filter coefficients
+    const double cutoffFrequency = 15000.0; // 15kHz cutoff
+    const double q = 0.707; // Butterworth Q
+
+    auto coefficients = juce::dsp::IIR::Coefficients<float>::makeLowPass(sampleRate, cutoffFrequency, q);
+
+    for (auto& filter : lowpassFilter)
+    {
+        filter.coefficients = coefficients;
+    }
+}
+
+
 void TriquetraAudioProcessor::initializeHadamardMatrix()
 {
     hadamardMatrix = {{
@@ -120,7 +135,15 @@ void TriquetraAudioProcessor::prepareToPlay (double sampleRate, int samplesPerBl
     writePosition = 0;
 
     modulatedDelayTimes = basedelayTimes;
-}
+    
+    initializeLowpassFilter(sampleRate);
+
+    // Prepare lowpass filter
+    juce::dsp::ProcessSpec spec { sampleRate, static_cast<juce::uint32> (samplesPerBlock), 2 };
+    for (auto& filter : lowpassFilter)
+    {
+        filter.prepare(spec);
+    }}
 
 void TriquetraAudioProcessor::releaseResources()
 {
@@ -249,6 +272,10 @@ void TriquetraAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, ju
         feedbackSample *= feedback * 0.25f;
 
         float newSample = inputSample + feedbackSample;
+        
+        // Apply lowpass filter to the wet signal
+        newSample = lowpassFilter[0].processSample(newSample);
+
         delayBuffer[writePosition] = newSample;
         writePosition = (writePosition + 1) % delayBufferSize;
 

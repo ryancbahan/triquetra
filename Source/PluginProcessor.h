@@ -17,7 +17,8 @@ public:
 
     const juce::String getName() const override;
     bool isBusesLayoutSupported (const BusesLayout& layouts) const;
-
+    std::array<juce::dsp::IIR::Filter<float>, 2> lowpassFilter;
+    void initializeLowpassFilter();
     bool acceptsMidi() const override;
     bool producesMidi() const override;
     bool isMidiEffect() const override;
@@ -45,6 +46,7 @@ private:
     std::array<float, 4> lfoPhases;
     std::array<float, 4> lfoFrequencies;
     float lfoDepth;
+    void initializeLowpassFilter(double sampleRate);
 
     void initializeHadamardMatrix();
     float getInterpolatedSample(float delayTime);
