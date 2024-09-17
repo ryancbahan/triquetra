@@ -10,17 +10,13 @@ public:
 
     void prepareToPlay (double sampleRate, int samplesPerBlock) override;
     void releaseResources() override;
-
-    #ifndef JucePlugin_PreferredChannelConfigurations
-    bool isBusesLayoutSupported (const BusesLayout& layouts) const override;
-    #endif
-
     void processBlock (juce::AudioBuffer<float>&, juce::MidiBuffer&) override;
 
     juce::AudioProcessorEditor* createEditor() override;
     bool hasEditor() const override;
 
     const juce::String getName() const override;
+    bool isBusesLayoutSupported (const BusesLayout& layouts) const;
 
     bool acceptsMidi() const override;
     bool producesMidi() const override;
@@ -37,13 +33,16 @@ public:
     void setStateInformation (const void* data, int sizeInBytes) override;
 
 private:
-    std::array<juce::dsp::DelayLine<float, juce::dsp::DelayLineInterpolationTypes::Linear>, 4> delayLines;
-    float delayTimeInSeconds;
+    std::vector<float> delayBuffer;
+    int delayBufferSize;
+    int writePosition;
+    std::array<int, 4> readPositions;
+    std::array<float, 4> delayTimes;
     float feedback;
     std::array<std::array<float, 4>, 4> hadamardMatrix;
-    std::array<float, 4> delayStates;
 
     void initializeHadamardMatrix();
+    float getInterpolatedSample(float delayTime);
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (TriquetraAudioProcessor)
 };

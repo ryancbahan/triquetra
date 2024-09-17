@@ -22,15 +22,13 @@ TriquetraAudioProcessor::TriquetraAudioProcessor()
                        )
 #endif
 {
+    delayTimes = {0.0443f, 0.0531f, 0.0667f, 0.0798f}; // Prime number ratios for less repetitive echoes
+    feedback = 0.6f;
     initializeHadamardMatrix();
-    delayStates.fill(0.0f);
-    delayTimeInSeconds = 0.5f; // 0.5 seconds delay
-    feedback = 0.3f; // Reduced feedback to avoid excessive distortion
 }
 
 void TriquetraAudioProcessor::initializeHadamardMatrix()
 {
-    // 4x4 Hadamard matrix
     hadamardMatrix = {{
         {1.0f,  1.0f,  1.0f,  1.0f},
         {1.0f, -1.0f,  1.0f, -1.0f},
@@ -38,8 +36,7 @@ void TriquetraAudioProcessor::initializeHadamardMatrix()
         {1.0f, -1.0f, -1.0f,  1.0f}
     }};
 
-    // Normalize the matrix
-    float normalizationFactor = 0.5f; // 1 / sqrt(4)
+    float normalizationFactor = 0.5f;
     for (auto& row : hadamardMatrix)
         for (auto& element : row)
             element *= normalizationFactor;
@@ -114,22 +111,14 @@ void TriquetraAudioProcessor::changeProgramName (int index, const juce::String& 
 //==============================================================================
 void TriquetraAudioProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
 {
-    juce::dsp::ProcessSpec spec;
-    spec.sampleRate = sampleRate;
-    spec.maximumBlockSize = samplesPerBlock;
-    spec.numChannels = 1; // Each delay line is mono
+    const int maxDelaySamples = static_cast<int>(sampleRate * 0.2); // 200ms maximum delay
+    delayBufferSize = maxDelaySamples;
+    delayBuffer.resize(delayBufferSize, 0.0f);
+    writePosition = 0;
 
-    const float maxDelayInSeconds = 0.2f; // 200ms maximum delay
-    const int maxDelaySamples = static_cast<int>(sampleRate * maxDelayInSeconds);
-
-    for (auto& delayLine : delayLines)
+    for (int i = 0; i < 4; ++i)
     {
-        delayLine.prepare(spec);
-        delayLine.setMaximumDelayInSamples(maxDelaySamples);
-        
-        // Ensure delay time doesn't exceed maximum
-        float actualDelayTime = juce::jmin(delayTimeInSeconds, maxDelayInSeconds);
-        delayLine.setDelay(actualDelayTime * sampleRate);
+        readPositions[i] = static_cast<int>(delayTimes[i] * sampleRate);
     }
 }
 
@@ -165,6 +154,17 @@ bool TriquetraAudioProcessor::isBusesLayoutSupported (const BusesLayout& layouts
 }
 #endif
 
+float TriquetraAudioProcessor::getInterpolatedSample(float delayTime)
+{
+    float delayTimeInSamples = delayTime * getSampleRate();
+    int readPosition = static_cast<int>(writePosition - delayTimeInSamples + delayBufferSize) % delayBufferSize;
+    
+    float fraction = delayTimeInSamples - static_cast<int>(delayTimeInSamples);
+    int nextSample = (readPosition + 1) % delayBufferSize;
+
+    return delayBuffer[readPosition] + fraction * (delayBuffer[nextSample] - delayBuffer[readPosition]);
+}
+
 void TriquetraAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midiMessages)
 {
     juce::ScopedNoDenormals noDenormals;
@@ -181,38 +181,36 @@ void TriquetraAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, ju
         {
             inputSample += buffer.getSample(channel, sample);
         }
-        inputSample /= static_cast<float>(totalNumInputChannels); // Average input across channels
+        inputSample /= static_cast<float>(totalNumInputChannels);
 
-        // Process through delay network
         std::array<float, 4> delayOutputs;
         for (int i = 0; i < 4; ++i)
         {
-            delayOutputs[i] = delayLines[i].popSample(0);
+            delayOutputs[i] = getInterpolatedSample(delayTimes[i]);
         }
 
-        std::array<float, 4> feedbackSamples;
+        float feedbackSample = 0.0f;
         for (int i = 0; i < 4; ++i)
         {
-            feedbackSamples[i] = 0.0f;
+            float sum = 0.0f;
             for (int j = 0; j < 4; ++j)
             {
-                feedbackSamples[i] += hadamardMatrix[i][j] * delayOutputs[j];
+                sum += hadamardMatrix[i][j] * delayOutputs[j];
             }
-            feedbackSamples[i] *= feedback;
+            feedbackSample += sum;
         }
+        feedbackSample *= feedback * 0.25f;
 
-        for (int i = 0; i < 4; ++i)
-        {
-            delayLines[i].pushSample(0, inputSample + feedbackSamples[i]);
-        }
+        float newSample = inputSample + feedbackSample;
+        delayBuffer[writePosition] = newSample;
+        writePosition = (writePosition + 1) % delayBufferSize;
 
         float outputSample = inputSample;
-        for (int i = 0; i < 4; ++i)
+        for (const auto& delayOutput : delayOutputs)
         {
-            outputSample += delayOutputs[i] * 0.25f; // Mix in delay outputs
+            outputSample += delayOutput * 0.25f;
         }
 
-        // Write output to all channels
         for (int channel = 0; channel < totalNumOutputChannels; ++channel)
         {
             buffer.setSample(channel, sample, outputSample);
