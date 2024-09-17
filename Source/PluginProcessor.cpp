@@ -22,7 +22,7 @@ TriquetraAudioProcessor::TriquetraAudioProcessor()
                        )
 #endif
 {
-    delayTimes = {0.0443f, 0.0531f, 0.0667f, 0.0798f}; // Prime number ratios for less repetitive echoes
+    delayTimes = {0.0443f * 2, 0.0531f * 2, 0.0667f * 2, 0.0798f * 2}; // Prime number ratios for less repetitive echoes
     feedback = 0.6f;
     initializeHadamardMatrix();
 }
