@@ -81,6 +81,9 @@ private:
     std::array<float, 4> modulatedDelayTimes;
     void updateLowpassCoefficients();
     
+    juce::dsp::IIR::Filter<float> allPassFilterLeft;
+      juce::dsp::IIR::Filter<float> allPassFilterRight;
+    
     float lowpassFilterRate = 0.95f; // Controls how quickly the lowpass filter frequency decreases
     std::array<float, 8> diffusionFeedback = {0}; // 4 for left, 4 for right
     float diffusionFeedbackAmount = 0.6f; // Adjust this value to control the amount of diffusion feedback
@@ -124,7 +127,8 @@ private:
     float shortDelayGain = 1.0f;
     float longDelayGain = 1.0f;
     float outputGain = 1.0f;
-    float dryMix = 0.7f;
+    float dryMix = 0.5f;
+    float wetMix = 0.5f;
     float shortDelayMix = 0.5f;
     float longDelayMix = 0.3f;
     std::array<float, 4> longModulationPhases = {0.0f, 0.0f, 0.0f, 0.0f};
