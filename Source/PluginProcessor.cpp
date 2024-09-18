@@ -31,6 +31,7 @@ TriquetraAudioProcessor::TriquetraAudioProcessor()
     modulationFrequencies = {0.1f, 0.13f, 0.17f, 0.19f, 0.23f, 0.29f, 0.31f, 0.37f};
     phaseOffsets.fill(0.0f);
     phaseIncrements = {0.00001f, 0.000013f, 0.000017f, 0.000019f}; // Very slow changes
+    globalFeedback = 0.4f; // Initial value, can be changed later
     initializeHadamardMatrix();
 }
 
@@ -232,6 +233,17 @@ float TriquetraAudioProcessor::getInterpolatedSample(float delayTime)
     return delayBuffer[readPosition] + fraction * (delayBuffer[nextSample] - delayBuffer[readPosition]);
 }
 
+float TriquetraAudioProcessor::softClip(float sample)
+{
+    // Simple hyperbolic tangent soft clipper
+    return std::tanh(sample);
+}
+
+float TriquetraAudioProcessor::applyGain(float sample, float gainFactor)
+{
+    return sample * gainFactor;
+}
+
 void TriquetraAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midiMessages)
 {
     juce::ScopedNoDenormals noDenormals;
@@ -260,6 +272,12 @@ void TriquetraAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, ju
         }
         inputSample /= static_cast<float>(totalNumInputChannels);
 
+        // Apply input gain
+        inputSample = applyGain(inputSample, inputGain);
+
+        // Add feedback to input
+        float processedInput = inputSample + lastOutputSample * globalFeedback;
+
         std::array<float, 4> shortDelayOutputs;
         std::array<float, 4> longDelayOutputs;
 
@@ -278,6 +296,12 @@ void TriquetraAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, ju
         // Apply Hadamard matrix to mix short delay outputs
         std::array<float, 4> mixedShortOutputs = applyHadamardMixing(shortDelayOutputs);
 
+        // Apply gain to short delay outputs
+        for (int i = 0; i < 4; ++i)
+        {
+            mixedShortOutputs[i] = applyGain(mixedShortOutputs[i], shortDelayGain);
+        }
+
         // Process long delays (echoes), feeding in the mixed short delay output
         for (int i = 0; i < 4; ++i)
         {
@@ -287,8 +311,8 @@ void TriquetraAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, ju
             float modulatedDelay = baseDelay + (modulation * longModulationDepth * baseDelay);
             modulatedDelay = std::max(modulatedDelay, 0.0f);
             
-            // Mix the input sample with all mixed short delay outputs
-            float longDelayInput = inputSample * 0.5f;
+            // Mix the processed input with all mixed short delay outputs
+            float longDelayInput = processedInput * 0.5f;
             for (int j = 0; j < 4; ++j)
             {
                 longDelayInput += mixedShortOutputs[j] * 0.125f; // Distribute the short delay outputs evenly
@@ -301,31 +325,37 @@ void TriquetraAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, ju
         // Apply Hadamard matrix to mix long delay outputs
         std::array<float, 4> mixedLongOutputs = applyHadamardMixing(longDelayOutputs);
 
-        float feedbackSample = 0.0f;
+        // Apply gain to long delay outputs
         for (int i = 0; i < 4; ++i)
         {
-            feedbackSample += mixedLongOutputs[i];
+            mixedLongOutputs[i] = applyGain(mixedLongOutputs[i], longDelayGain);
         }
-        feedbackSample *= feedback * 0.25f;
 
-        float newSample = inputSample + feedbackSample;
-        
-        // Apply lowpass filter to the wet signal
-        newSample = lowpassFilters[0].processSample(newSample);
-
-        delayBuffer[writePosition] = newSample;
-        writePosition = (writePosition + 1) % delayBufferSize;
-
-        float outputSample = inputSample * 0.7f;  // Adjust dry/wet mix as needed
+        // Calculate the output sample
+        float outputSample = inputSample * dryMix;
         for (int i = 0; i < 4; ++i)
         {
-            outputSample += mixedShortOutputs[i] * 0.15f + mixedLongOutputs[i] * 0.15f;
+            outputSample += mixedShortOutputs[i] * shortDelayMix + mixedLongOutputs[i] * longDelayMix;
         }
 
+        // Apply soft clipping
+        outputSample = softClip(outputSample);
+
+        // Apply final output gain
+        outputSample = applyGain(outputSample, outputGain);
+
+        // Store the output sample for the next iteration's feedback
+        lastOutputSample = outputSample;
+
+        // Write the output sample to all channels
         for (int channel = 0; channel < totalNumOutputChannels; ++channel)
         {
             buffer.setSample(channel, sample, outputSample);
         }
+
+        // Update the delay buffer with the processed output (including feedback)
+        delayBuffer[writePosition] = outputSample;
+        writePosition = (writePosition + 1) % delayBufferSize;
     }
 }
 

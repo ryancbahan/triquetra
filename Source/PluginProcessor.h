@@ -49,6 +49,8 @@ private:
     std::array<float, 4> modulatedShortDelayTimes;
     std::array<float, 4> modulatedLongDelayTimes;
 
+    float globalFeedback;
+    float lastOutputSample;
     float feedback;
     float shortModulationDepth;
     float longModulationDepth;
@@ -87,6 +89,17 @@ private:
          }
          return outputs;
      }
+    
+    float softClip(float sample);
+    float applyGain(float sample, float gainFactor);
+    
+    float inputGain = 1.0f;
+    float shortDelayGain = 1.0f;
+    float longDelayGain = 1.0f;
+    float outputGain = 1.0f;
+    float dryMix = 0.7f;
+    float shortDelayMix = 0.15f;
+    float longDelayMix = 0.15f;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (TriquetraAudioProcessor)
 };
