@@ -26,7 +26,7 @@ TriquetraAudioProcessor::TriquetraAudioProcessor()
     feedback = 0.6f;
     longDelayTimes = {0.25f, 0.5f, 0.75f, 1.0f};
     shortModulationDepth = 0.0001f;
-    longModulationDepth = 0.01f;
+    longModulationDepth = 0.02f;
     modulationFrequencies = {0.1f, 0.13f, 0.17f, 0.19f, 0.23f, 0.29f, 0.31f, 0.37f};
     phaseOffsets.fill(0.0f);
     phaseIncrements = {0.00001f, 0.000013f, 0.000017f, 0.000019f}; // Very slow changes
@@ -183,9 +183,9 @@ bool TriquetraAudioProcessor::isBusesLayoutSupported (const BusesLayout& layouts
 
 void TriquetraAudioProcessor::initializeLowpassFilter(double sampleRate)
 {
-    // Initialize lowpass filter coefficients
-    const double cutoffFrequency = 15000.0; // 15kHz cutoff
-    const double q = 0.707; // Butterworth Q
+    // Set the cutoff frequency to 8kHz
+    const double cutoffFrequency = 8000.0;
+    const double q = 0.707; // Butterworth Q for smooth response
 
     auto coefficients = juce::dsp::IIR::Coefficients<float>::makeLowPass(sampleRate, cutoffFrequency, q);
 
@@ -193,10 +193,11 @@ void TriquetraAudioProcessor::initializeLowpassFilter(double sampleRate)
     lowpassFilterRight.coefficients = coefficients;
 
     // Prepare the filters
-    juce::dsp::ProcessSpec spec { sampleRate, static_cast<juce::uint32> (512), 1 }; // 512 is a typical buffer size, adjust if needed
+    juce::dsp::ProcessSpec spec { sampleRate, static_cast<juce::uint32> (512), 1 };
     lowpassFilterLeft.prepare(spec);
     lowpassFilterRight.prepare(spec);
 }
+
 
 void TriquetraAudioProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
 {
@@ -309,7 +310,6 @@ void TriquetraAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juc
             float modulatedDelayLeft = baseDelayLeft + (modulationLeft * shortModulationDepth * baseDelayLeft);
             float modulatedDelayRight = baseDelayRight + (modulationRight * shortModulationDepth * baseDelayRight);
 
-            // Use cubic interpolation instead of linear interpolation
             shortDelayOutputLeft[i] = getCubicInterpolatedSample(modulatedDelayLeft / sampleRate);
             shortDelayOutputRight[i] = getCubicInterpolatedSample(modulatedDelayRight / sampleRate);
 
@@ -350,7 +350,6 @@ void TriquetraAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juc
             float longDelayInputLeft = processedInputLeft * (1.0f - diffusionToLongMix) + shortDelayOutputLeft[i] * diffusionToLongMix;
             float longDelayInputRight = processedInputRight * (1.0f - diffusionToLongMix) + shortDelayOutputRight[i] * diffusionToLongMix;
 
-            // Use cubic interpolation instead of linear interpolation
             longDelayOutputLeft[i] = getCubicInterpolatedSample(modulatedDelayLeft / sampleRate);
             longDelayOutputRight[i] = getCubicInterpolatedSample(modulatedDelayRight / sampleRate);
 
@@ -364,6 +363,10 @@ void TriquetraAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juc
 
         float wetSignalRight = (shortDelayOutputRight[0] + shortDelayOutputRight[1] + shortDelayOutputRight[2] + shortDelayOutputRight[3]) * 0.25f
                              + (longDelayOutputRight[0] + longDelayOutputRight[1] + longDelayOutputRight[2] + longDelayOutputRight[3]) * 0.25f;
+
+        // Apply anti-aliasing filter to the wet signal
+        wetSignalLeft = lowpassFilterLeft.processSample(wetSignalLeft);
+        wetSignalRight = lowpassFilterRight.processSample(wetSignalRight);
 
         // Apply dry/wet mix
         float outputSampleLeft = inputSampleLeft * dryMix + wetSignalLeft * wetMix;
