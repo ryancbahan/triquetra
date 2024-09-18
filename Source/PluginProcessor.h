@@ -1,6 +1,21 @@
 #pragma once
 
 #include <JuceHeader.h>
+struct AllPassFilter {
+    float a = 0.0f;
+    float z1 = 0.0f;
+
+    float process(float input) {
+        float output = a * input + z1;
+        z1 = input - a * output;
+        return output;
+    }
+
+    void setCoefficient(float coefficient) {
+        a = coefficient;
+    }
+};
+
 
 class TriquetraAudioProcessor  : public juce::AudioProcessor
 {
@@ -60,9 +75,12 @@ private:
 
     std::array<std::array<float, 4>, 4> hadamardMatrix;
     std::array<juce::dsp::IIR::Filter<float>, 2> lowpassFilters;
+    std::array<AllPassFilter, 4> allPassFilters;
     
     std::array<float, 4> basedelayTimes;
     std::array<float, 4> modulatedDelayTimes;
+
+    float calculateAmplitude(const std::array<float, 4>& signal);
 
     // LFO-related members
     float lfoDepth;
