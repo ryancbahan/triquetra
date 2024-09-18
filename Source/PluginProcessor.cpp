@@ -278,6 +278,7 @@ void TriquetraAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juc
         std::array<float, 4> shortDelayOutputLeft = {0.0f, 0.0f, 0.0f, 0.0f};
         std::array<float, 4> shortDelayOutputRight = {0.0f, 0.0f, 0.0f, 0.0f};
 
+        // Process short delays
         for (int i = 0; i < 4; ++i)
         {
             modulationPhases[i] += modulationFrequencies[i] / sampleRate;
@@ -315,6 +316,7 @@ void TriquetraAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juc
         std::array<float, 4> longDelayOutputLeft = {0.0f, 0.0f, 0.0f, 0.0f};
         std::array<float, 4> longDelayOutputRight = {0.0f, 0.0f, 0.0f, 0.0f};
 
+        // Process long delays
         for (int i = 0; i < 4; ++i)
         {
             modulationPhases[i+4] += modulationFrequencies[i+4] / sampleRate;
@@ -346,23 +348,24 @@ void TriquetraAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juc
         float wetSignalRight = (shortDelayOutputRight[0] + shortDelayOutputRight[1] + shortDelayOutputRight[2] + shortDelayOutputRight[3]) * 0.25f
                              + (longDelayOutputRight[0] + longDelayOutputRight[1] + longDelayOutputRight[2] + longDelayOutputRight[3]) * 0.25f;
 
-        // Apply gain normalization on the wet signal to prevent clipping
-        float peakWetSignalLeft = std::max(std::abs(wetSignalLeft), 1.0f); // Prevent divide by zero
-        float peakWetSignalRight = std::max(std::abs(wetSignalRight), 1.0f);
-        
-        // Dynamically reduce wet gain if it exceeds threshold
-        float wetGainReduction = std::min(1.0f, 1.0f / std::max(peakWetSignalLeft, peakWetSignalRight));
-        
-        wetSignalLeft *= wetGainReduction;
-        wetSignalRight *= wetGainReduction;
+        // Apply compression to manage peaks in the wet signal
+        float threshold = 0.9f;  // Threshold for compression
+        float compressionRatio = 4.0f; // Compression ratio for controlling peaks
+
+        wetSignalLeft = applyCompression(wetSignalLeft, threshold, compressionRatio);
+        wetSignalRight = applyCompression(wetSignalRight, threshold, compressionRatio);
 
         // Apply dry/wet mix
         float outputSampleLeft = inputSampleLeft * dryMix + wetSignalLeft * wetMix;
         float outputSampleRight = inputSampleRight * dryMix + wetSignalRight * wetMix;
 
+        // Apply final limiter to prevent clipping
+        outputSampleLeft = softClip(outputSampleLeft);
+        outputSampleRight = softClip(outputSampleRight);
+
         // Apply soft clipping and final output gain
-        outputSampleLeft = softClip(applyGain(outputSampleLeft, outputGain));
-        outputSampleRight = softClip(applyGain(outputSampleRight, outputGain));
+        outputSampleLeft = applyGain(outputSampleLeft, outputGain);
+        outputSampleRight = applyGain(outputSampleRight, outputGain);
 
         // Store the output samples for feedback in the next iteration
         lastOutputSampleLeft = outputSampleLeft;
@@ -378,6 +381,15 @@ void TriquetraAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juc
     }
 }
 
+// Compression function for managing peaks
+float TriquetraAudioProcessor::applyCompression(float sample, float threshold, float ratio)
+{
+    if (std::abs(sample) > threshold)
+    {
+        sample = threshold + (sample - threshold) / ratio;
+    }
+    return sample;
+}
 
 
 float TriquetraAudioProcessor::calculateAmplitude(const std::array<float, 4>& signal) {

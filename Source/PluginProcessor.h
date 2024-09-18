@@ -71,6 +71,8 @@ private:
     float longModulationDepth;
     std::array<float, 8> modulationFrequencies;
     std::array<float, 8> modulationPhases;
+    float applyCompression(float sample, float threshold, float ratio);
+
 
     std::array<std::array<float, 4>, 4> hadamardMatrix;
     juce::dsp::IIR::Filter<float> lowpassFilterLeft;
