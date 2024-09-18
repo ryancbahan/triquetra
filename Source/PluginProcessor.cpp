@@ -26,7 +26,7 @@ TriquetraAudioProcessor::TriquetraAudioProcessor()
     feedback = 0.6f;
     longDelayTimes = {0.25f, 0.5f, 0.75f, 1.0f};
     shortModulationDepth = 0.0001f;
-    longModulationDepth = 0.002f;
+    longModulationDepth = 0.05f;
     modulationFrequencies = {0.1f, 0.13f, 0.17f, 0.19f, 0.23f, 0.29f, 0.31f, 0.37f};
     phaseOffsets.fill(0.0f);
     phaseIncrements = {0.00001f, 0.000013f, 0.000017f, 0.000019f}; // Very slow changes
@@ -326,7 +326,6 @@ void TriquetraAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juc
             shortDelayOutputLeft[i] = getInterpolatedSample(modulatedDelayLeft / sampleRate);
             shortDelayOutputRight[i] = getInterpolatedSample(modulatedDelayRight / sampleRate);
 
-            // Add feedback and increase diffusion feedback amount for more density
             shortDelayOutputLeft[i] += diffusionFeedback[i] * diffusionFeedbackAmount * 1.2f; // Increase feedback for more presence
             shortDelayOutputRight[i] += diffusionFeedback[i + 4] * diffusionFeedbackAmount * 1.2f;
 
@@ -340,7 +339,6 @@ void TriquetraAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juc
             diffusionFeedback[i] = lowpassFilterLeft.processSample(hadamardLeft);
             diffusionFeedback[i + 4] = lowpassFilterRight.processSample(hadamardRight);
 
-            // Increase the diffusion mix for more prominent short reflections
             shortDelayOutputLeft[i] = diffusionFeedback[i] * diffusionMix * 1.5f + processedInputLeft * (1.0f - diffusionMix);
             shortDelayOutputRight[i] = diffusionFeedback[i + 4] * diffusionMix * 1.5f + processedInputRight * (1.0f - diffusionMix);
         }
@@ -349,7 +347,6 @@ void TriquetraAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juc
         float amplitudeLeft = (std::abs(shortDelayOutputLeft[0]) + std::abs(shortDelayOutputLeft[1]) + std::abs(shortDelayOutputLeft[2]) + std::abs(shortDelayOutputLeft[3])) * 0.25f;
         float amplitudeRight = (std::abs(shortDelayOutputRight[0]) + std::abs(shortDelayOutputRight[1]) + std::abs(shortDelayOutputRight[2]) + std::abs(shortDelayOutputRight[3])) * 0.25f;
 
-        // Process through all-pass filters with cross-modulation
         float allPassOutputLeft[4], allPassOutputRight[4];
         for (int i = 0; i < 4; ++i)
         {
@@ -363,7 +360,7 @@ void TriquetraAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juc
             allPassOutputRight[i] = allPassFilters[i].process(shortDelayOutputRight[i]);
         }
 
-        // Process long delays after all-pass filtering, but increase short reflection input for prominence
+        // Process long delays and apply Hadamard matrix
         std::array<float, 4> longDelayOutputLeft = {0.0f, 0.0f, 0.0f, 0.0f};
         std::array<float, 4> longDelayOutputRight = {0.0f, 0.0f, 0.0f, 0.0f};
 
@@ -381,7 +378,6 @@ void TriquetraAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juc
             float modulatedDelayLeft = baseDelayLeft + (modulationLeft * longModulationDepth * baseDelayLeft);
             float modulatedDelayRight = baseDelayRight + (modulationRight * longModulationDepth * baseDelayRight);
 
-            // Mix more short reflection input to the long delays
             float longDelayInputLeft = allPassOutputLeft[i] * (1.5f - diffusionToLongMix) + shortDelayOutputLeft[i] * diffusionToLongMix;
             float longDelayInputRight = allPassOutputRight[i] * (1.5f - diffusionToLongMix) + shortDelayOutputRight[i] * diffusionToLongMix;
 
@@ -392,12 +388,25 @@ void TriquetraAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juc
             longDelayOutputRight[i] = longDelayInputRight * (1.0f - longFeedback) + longDelayOutputRight[i] * longFeedback;
         }
 
+        // Apply Hadamard matrix to long delays for further spreading
+        std::array<float, 4> hadamardLongDelayLeft = {0.0f, 0.0f, 0.0f, 0.0f};
+        std::array<float, 4> hadamardLongDelayRight = {0.0f, 0.0f, 0.0f, 0.0f};
+
+        for (int i = 0; i < 4; ++i)
+        {
+            for (int j = 0; j < 4; ++j)
+            {
+                hadamardLongDelayLeft[i] += hadamardMatrix[i][j] * longDelayOutputLeft[j];
+                hadamardLongDelayRight[i] += hadamardMatrix[i][j] * longDelayOutputRight[j];
+            }
+        }
+
         // Sum up short and long delay outputs
         float wetSignalLeft = (shortDelayOutputLeft[0] + shortDelayOutputLeft[1] + shortDelayOutputLeft[2] + shortDelayOutputLeft[3]) * 0.25f
-                            + (longDelayOutputLeft[0] + longDelayOutputLeft[1] + longDelayOutputLeft[2] + longDelayOutputLeft[3]) * 0.25f;
+                            + (hadamardLongDelayLeft[0] + hadamardLongDelayLeft[1] + hadamardLongDelayLeft[2] + hadamardLongDelayLeft[3]) * 0.25f;
 
         float wetSignalRight = (shortDelayOutputRight[0] + shortDelayOutputRight[1] + shortDelayOutputRight[2] + shortDelayOutputRight[3]) * 0.25f
-                             + (longDelayOutputRight[0] + longDelayOutputRight[1] + longDelayOutputRight[2] + longDelayOutputRight[3]) * 0.25f;
+                             + (hadamardLongDelayRight[0] + hadamardLongDelayRight[1] + hadamardLongDelayRight[2] + hadamardLongDelayRight[3]) * 0.25f;
 
         // Apply dry/wet mix
         float outputSampleLeft = inputSampleLeft * dryMix + wetSignalLeft * wetMix;
