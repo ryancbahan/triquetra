@@ -26,7 +26,7 @@ TriquetraAudioProcessor::TriquetraAudioProcessor()
     feedback = 0.6f;
     longDelayTimes = {0.25f, 0.5f, 0.75f, 1.0f};
     shortModulationDepth = 0.0001f;
-    longModulationDepth = 0.05f;
+    longModulationDepth = 0.01f;
     modulationFrequencies = {0.1f, 0.13f, 0.17f, 0.19f, 0.23f, 0.29f, 0.31f, 0.37f};
     phaseOffsets.fill(0.0f);
     phaseIncrements = {0.00001f, 0.000013f, 0.000017f, 0.000019f}; // Very slow changes
@@ -346,6 +346,16 @@ void TriquetraAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juc
         float wetSignalRight = (shortDelayOutputRight[0] + shortDelayOutputRight[1] + shortDelayOutputRight[2] + shortDelayOutputRight[3]) * 0.25f
                              + (longDelayOutputRight[0] + longDelayOutputRight[1] + longDelayOutputRight[2] + longDelayOutputRight[3]) * 0.25f;
 
+        // Apply gain normalization on the wet signal to prevent clipping
+        float peakWetSignalLeft = std::max(std::abs(wetSignalLeft), 1.0f); // Prevent divide by zero
+        float peakWetSignalRight = std::max(std::abs(wetSignalRight), 1.0f);
+        
+        // Dynamically reduce wet gain if it exceeds threshold
+        float wetGainReduction = std::min(1.0f, 1.0f / std::max(peakWetSignalLeft, peakWetSignalRight));
+        
+        wetSignalLeft *= wetGainReduction;
+        wetSignalRight *= wetGainReduction;
+
         // Apply dry/wet mix
         float outputSampleLeft = inputSampleLeft * dryMix + wetSignalLeft * wetMix;
         float outputSampleRight = inputSampleRight * dryMix + wetSignalRight * wetMix;
@@ -367,6 +377,7 @@ void TriquetraAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juc
         writePosition = (writePosition + 1) % delayBufferSize;
     }
 }
+
 
 
 float TriquetraAudioProcessor::calculateAmplitude(const std::array<float, 4>& signal) {
