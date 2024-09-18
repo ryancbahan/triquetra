@@ -43,10 +43,23 @@ private:
     std::vector<float> delayBuffer;
     int delayBufferSize;
     int writePosition;
+
+    std::array<float, 4> shortDelayTimes;
+    std::array<float, 4> longDelayTimes;
+    std::array<float, 4> modulatedShortDelayTimes;
+    std::array<float, 4> modulatedLongDelayTimes;
+
+    float feedback;
+    float shortModulationDepth;
+    float longModulationDepth;
+    std::array<float, 8> modulationFrequencies;
+    std::array<float, 8> modulationPhases;
+
+    std::array<std::array<float, 4>, 4> hadamardMatrix;
+    std::array<juce::dsp::IIR::Filter<float>, 2> lowpassFilters;
+    
     std::array<float, 4> basedelayTimes;
     std::array<float, 4> modulatedDelayTimes;
-    float feedback;
-    std::array<std::array<float, 4>, 4> hadamardMatrix;
 
     // LFO-related members
     float lfoDepth;
@@ -55,13 +68,25 @@ private:
     std::array<float, 4> phaseOffsets;
      std::array<float, 4> phaseIncrements;
      float modulationDepth;
-    std::array<float, 4> modulationFrequencies;
-    std::array<float, 4> modulationPhases;
     void initializeHadamardMatrix();
     float getInterpolatedSample(float delayTime);
     float generateLFOSample(int lfoIndex);
     void updateLFOs();
     void applyHadamardToLFOs(std::array<float, 4>& lfoOutputs);
+    
+    std::array<float, 4> applyHadamardMixing(const std::array<float, 4>& inputs)
+     {
+         std::array<float, 4> outputs;
+         for (int i = 0; i < 4; ++i)
+         {
+             outputs[i] = 0.0f;
+             for (int j = 0; j < 4; ++j)
+             {
+                 outputs[i] += hadamardMatrix[i][j] * inputs[j];
+             }
+         }
+         return outputs;
+     }
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (TriquetraAudioProcessor)
 };
