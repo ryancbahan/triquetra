@@ -249,126 +249,121 @@ void TriquetraAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, ju
     auto totalNumInputChannels  = getTotalNumInputChannels();
     auto totalNumOutputChannels = getTotalNumOutputChannels();
 
+    // Ensure we have at least a stereo output
+    if (totalNumOutputChannels < 2) return;
+
     for (auto i = totalNumInputChannels; i < totalNumOutputChannels; ++i)
         buffer.clear (i, 0, buffer.getNumSamples());
 
     float sampleRate = static_cast<float>(getSampleRate());
 
-    // Increase modulation rates for long delays
-    const std::array<float, 4> longModulationRates = {0.5f, 0.7f, 0.9f, 1.1f};
+    // Stereo offset for delay times (in samples)
+    const float stereoOffset = 0.02f * sampleRate; // 20ms offset
 
     for (int sample = 0; sample < buffer.getNumSamples(); ++sample)
     {
         // Update modulation phases
-        for (int i = 0; i < 4; ++i)
+        for (int i = 0; i < 8; ++i)
         {
             modulationPhases[i] += modulationFrequencies[i] / sampleRate;
             if (modulationPhases[i] >= 1.0f)
                 modulationPhases[i] -= 1.0f;
         }
-        // Update long delay modulation phases separately
-        for (int i = 0; i < 4; ++i)
-        {
-            longModulationPhases[i] += longModulationRates[i] / sampleRate;
-            if (longModulationPhases[i] >= 1.0f)
-                longModulationPhases[i] -= 1.0f;
-        }
 
-        float inputSample = 0.0f;
-        for (int channel = 0; channel < totalNumInputChannels; ++channel)
-        {
-            inputSample += buffer.getSample(channel, sample);
-        }
-        inputSample /= static_cast<float>(totalNumInputChannels);
+        float inputSampleLeft = buffer.getSample(0, sample);
+        float inputSampleRight = totalNumInputChannels > 1 ? buffer.getSample(1, sample) : inputSampleLeft;
 
         // Apply input gain
-        inputSample = applyGain(inputSample, inputGain);
+        inputSampleLeft = applyGain(inputSampleLeft, inputGain);
+        inputSampleRight = applyGain(inputSampleRight, inputGain);
 
         // Add feedback to input
-        float processedInput = inputSample + lastOutputSample * globalFeedback;
+        float processedInputLeft = inputSampleLeft + lastOutputSampleLeft * globalFeedback;
+        float processedInputRight = inputSampleRight + lastOutputSampleRight * globalFeedback;
 
-        std::array<float, 4> shortDelayOutputs;
-        std::array<float, 4> longDelayOutputs;
+        std::array<float, 4> shortDelayOutputsLeft, shortDelayOutputsRight;
+        std::array<float, 4> longDelayOutputsLeft, longDelayOutputsRight;
 
         // Process short delays (early reflections)
         for (int i = 0; i < 4; ++i)
         {
-            float baseDelay = shortDelayTimes[i] * sampleRate;
-            float modulation = std::sin(2.0f * juce::MathConstants<float>::pi * modulationPhases[i]);
-            modulation = std::pow(std::abs(modulation), 0.5f) * std::copysign(1.0f, modulation);
-            float modulatedDelay = baseDelay + (modulation * shortModulationDepth * baseDelay);
-            modulatedDelay = std::max(modulatedDelay, 0.0f);
-            
-            shortDelayOutputs[i] = getInterpolatedSample(modulatedDelay / sampleRate);
+            float baseDelayLeft = shortDelayTimes[i] * sampleRate;
+            float baseDelayRight = baseDelayLeft + stereoOffset;
+
+            float modulationLeft = std::sin(2.0f * juce::MathConstants<float>::pi * modulationPhases[i]);
+            float modulationRight = std::sin(2.0f * juce::MathConstants<float>::pi * (modulationPhases[i] + 0.25f)); // 0.25 phase offset for right channel
+
+            float modulatedDelayLeft = baseDelayLeft + (modulationLeft * shortModulationDepth * baseDelayLeft);
+            float modulatedDelayRight = baseDelayRight + (modulationRight * shortModulationDepth * baseDelayRight);
+
+            shortDelayOutputsLeft[i] = getInterpolatedSample(modulatedDelayLeft / sampleRate);
+            shortDelayOutputsRight[i] = getInterpolatedSample(modulatedDelayRight / sampleRate);
         }
 
         // Apply Hadamard matrix to mix short delay outputs
-        std::array<float, 4> mixedShortOutputs = applyHadamardMixing(shortDelayOutputs);
+        std::array<float, 4> mixedShortOutputsLeft = applyHadamardMixing(shortDelayOutputsLeft);
+        std::array<float, 4> mixedShortOutputsRight = applyHadamardMixing(shortDelayOutputsRight);
 
-        // Apply gain to short delay outputs
+        // Invert polarity of some delays for right channel
+        mixedShortOutputsRight[1] *= -1.0f;
+        mixedShortOutputsRight[3] *= -1.0f;
+
+        // Process long delays (echoes)
         for (int i = 0; i < 4; ++i)
         {
-            mixedShortOutputs[i] = applyGain(mixedShortOutputs[i], shortDelayGain);
-        }
+            float baseDelayLeft = longDelayTimes[i] * sampleRate;
+            float baseDelayRight = baseDelayLeft - stereoOffset; // Opposite offset for long delays
 
-        // Process long delays (echoes) with enhanced modulation
-        for (int i = 0; i < 4; ++i)
-        {
-            float baseDelay = longDelayTimes[i] * sampleRate;
-            
-            // Use a combination of sine and triangle waves for more complex modulation
-            float sineMod = std::sin(2.0f * juce::MathConstants<float>::pi * longModulationPhases[i]);
-            float triangleMod = 2.0f * std::abs(2.0f * (longModulationPhases[i] - std::floor(longModulationPhases[i] + 0.5f))) - 1.0f;
-            float modulation = (sineMod + triangleMod) * 0.5f;
-            
-            // Increase modulation depth for long delays
-            float modulatedDelay = baseDelay + (modulation * longModulationDepth * baseDelay * 2.0f);
-            modulatedDelay = std::max(modulatedDelay, 0.0f);
-            
-            // Mix the processed input with all mixed short delay outputs
-            float longDelayInput = processedInput * 0.5f;
+            float modulationLeft = std::sin(2.0f * juce::MathConstants<float>::pi * modulationPhases[i + 4]);
+            float modulationRight = std::sin(2.0f * juce::MathConstants<float>::pi * (modulationPhases[i + 4] + 0.5f)); // 0.5 phase offset for right channel
+
+            float modulatedDelayLeft = baseDelayLeft + (modulationLeft * longModulationDepth * baseDelayLeft);
+            float modulatedDelayRight = baseDelayRight + (modulationRight * longModulationDepth * baseDelayRight);
+
+            float longDelayInputLeft = processedInputLeft * 0.5f;
+            float longDelayInputRight = processedInputRight * 0.5f;
+
             for (int j = 0; j < 4; ++j)
             {
-                longDelayInput += mixedShortOutputs[j] * 0.125f; // Distribute the short delay outputs evenly
+                longDelayInputLeft += mixedShortOutputsLeft[j] * 0.125f;
+                longDelayInputRight += mixedShortOutputsRight[j] * 0.125f;
             }
-            
-            longDelayOutputs[i] = getInterpolatedSample(modulatedDelay / sampleRate);
-            longDelayOutputs[i] = longDelayInput * 0.5f + longDelayOutputs[i] * 0.5f;
+
+            longDelayOutputsLeft[i] = getInterpolatedSample(modulatedDelayLeft / sampleRate);
+            longDelayOutputsRight[i] = getInterpolatedSample(modulatedDelayRight / sampleRate);
+
+            longDelayOutputsLeft[i] = longDelayInputLeft * 0.5f + longDelayOutputsLeft[i] * 0.5f;
+            longDelayOutputsRight[i] = longDelayInputRight * 0.5f + longDelayOutputsRight[i] * 0.5f;
         }
 
         // Apply Hadamard matrix to mix long delay outputs
-        std::array<float, 4> mixedLongOutputs = applyHadamardMixing(longDelayOutputs);
+        std::array<float, 4> mixedLongOutputsLeft = applyHadamardMixing(longDelayOutputsLeft);
+        std::array<float, 4> mixedLongOutputsRight = applyHadamardMixing(longDelayOutputsRight);
 
-        // Apply gain to long delay outputs
+        // Calculate the output samples
+        float outputSampleLeft = inputSampleLeft * dryMix;
+        float outputSampleRight = inputSampleRight * dryMix;
+
         for (int i = 0; i < 4; ++i)
         {
-            mixedLongOutputs[i] = applyGain(mixedLongOutputs[i], longDelayGain);
+            outputSampleLeft += mixedShortOutputsLeft[i] * shortDelayMix + mixedLongOutputsLeft[i] * longDelayMix;
+            outputSampleRight += mixedShortOutputsRight[i] * shortDelayMix + mixedLongOutputsRight[i] * longDelayMix;
         }
 
-        // Calculate the output sample
-        float outputSample = inputSample * dryMix;
-        for (int i = 0; i < 4; ++i)
-        {
-            outputSample += mixedShortOutputs[i] * shortDelayMix + mixedLongOutputs[i] * longDelayMix;
-        }
+        // Apply soft clipping and final output gain
+        outputSampleLeft = applyGain(softClip(outputSampleLeft), outputGain);
+        outputSampleRight = applyGain(softClip(outputSampleRight), outputGain);
 
-        // Apply soft clipping
-        outputSample = softClip(outputSample);
+        // Store the output samples for the next iteration's feedback
+        lastOutputSampleLeft = outputSampleLeft;
+        lastOutputSampleRight = outputSampleRight;
 
-        // Apply final output gain
-        outputSample = applyGain(outputSample, outputGain);
-
-        // Store the output sample for the next iteration's feedback
-        lastOutputSample = outputSample;
-
-        // Write the output sample to all channels
-        for (int channel = 0; channel < totalNumOutputChannels; ++channel)
-        {
-            buffer.setSample(channel, sample, outputSample);
-        }
+        // Write the output samples to the buffer
+        buffer.setSample(0, sample, outputSampleLeft);
+        buffer.setSample(1, sample, outputSampleRight);
 
         // Update the delay buffer with the processed output (including feedback)
-        delayBuffer[writePosition] = outputSample;
+        delayBuffer[writePosition] = (outputSampleLeft + outputSampleRight) * 0.5f;
         writePosition = (writePosition + 1) % delayBufferSize;
     }
 }

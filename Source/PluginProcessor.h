@@ -50,7 +50,8 @@ private:
     std::array<float, 4> modulatedLongDelayTimes;
 
     float globalFeedback;
-    float lastOutputSample;
+    float lastOutputSampleLeft;
+    float lastOutputSampleRight;
     float feedback;
     float shortModulationDepth;
     float longModulationDepth;
