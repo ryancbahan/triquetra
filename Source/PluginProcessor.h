@@ -99,8 +99,8 @@ private:
     float longDelayGain = 1.0f;
     float outputGain = 1.0f;
     float dryMix = 0.7f;
-    float shortDelayMix = 0.15f;
-    float longDelayMix = 0.15f;
+    float shortDelayMix = 0.5f;
+    float longDelayMix = 0.3f;
     std::array<float, 4> longModulationPhases = {0.0f, 0.0f, 0.0f, 0.0f};
 
 

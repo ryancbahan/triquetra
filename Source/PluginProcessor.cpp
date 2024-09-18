@@ -268,10 +268,10 @@ void TriquetraAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, ju
         float processedInputLeft = inputSampleLeft + lastOutputSampleLeft * globalFeedback;
         float processedInputRight = inputSampleRight + lastOutputSampleRight * globalFeedback;
 
-        std::array<float, 4> mixedShortOutputsLeft = {0.0f, 0.0f, 0.0f, 0.0f};
-        std::array<float, 4> mixedShortOutputsRight = {0.0f, 0.0f, 0.0f, 0.0f};
-        std::array<float, 4> mixedLongOutputsLeft = {0.0f, 0.0f, 0.0f, 0.0f};
-        std::array<float, 4> mixedLongOutputsRight = {0.0f, 0.0f, 0.0f, 0.0f};
+        std::array<float, 4> shortDelayOutputLeft = {0.0f, 0.0f, 0.0f, 0.0f};
+        std::array<float, 4> shortDelayOutputRight = {0.0f, 0.0f, 0.0f, 0.0f};
+        std::array<float, 4> longDelayOutputLeft = {0.0f, 0.0f, 0.0f, 0.0f};
+        std::array<float, 4> longDelayOutputRight = {0.0f, 0.0f, 0.0f, 0.0f};
 
         for (int i = 0; i < 4; ++i)
         {
@@ -292,15 +292,8 @@ void TriquetraAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, ju
             float modulatedDelayLeft = baseDelayLeft + (modulationLeft * shortModulationDepth * baseDelayLeft);
             float modulatedDelayRight = baseDelayRight + (modulationRight * shortModulationDepth * baseDelayRight);
 
-            float shortDelayOutputLeft = getInterpolatedSample(modulatedDelayLeft / sampleRate);
-            float shortDelayOutputRight = getInterpolatedSample(modulatedDelayRight / sampleRate);
-
-            // Apply Hadamard mixing for short delays
-            for (int j = 0; j < 4; ++j)
-            {
-                mixedShortOutputsLeft[j] += hadamardMatrix[j][i] * shortDelayOutputLeft;
-                mixedShortOutputsRight[j] += hadamardMatrix[j][i] * shortDelayOutputRight;
-            }
+            shortDelayOutputLeft[i] = getInterpolatedSample(modulatedDelayLeft / sampleRate);
+            shortDelayOutputRight[i] = getInterpolatedSample(modulatedDelayRight / sampleRate);
 
             // Process long delays
             baseDelayLeft = longDelayTimes[i] * sampleRate;
@@ -312,36 +305,47 @@ void TriquetraAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, ju
             modulatedDelayLeft = baseDelayLeft + (modulationLeft * longModulationDepth * baseDelayLeft);
             modulatedDelayRight = baseDelayRight + (modulationRight * longModulationDepth * baseDelayRight);
 
-            float longDelayInputLeft = processedInputLeft * 0.5f + mixedShortOutputsLeft[i] * 0.125f;
-            float longDelayInputRight = processedInputRight * 0.5f + mixedShortOutputsRight[i] * 0.125f;
+            float longDelayInputLeft = processedInputLeft * 0.5f + shortDelayOutputLeft[i] * 0.125f;
+            float longDelayInputRight = processedInputRight * 0.5f + shortDelayOutputRight[i] * 0.125f;
 
-            float longDelayOutputLeft = getInterpolatedSample(modulatedDelayLeft / sampleRate);
-            float longDelayOutputRight = getInterpolatedSample(modulatedDelayRight / sampleRate);
+            longDelayOutputLeft[i] = getInterpolatedSample(modulatedDelayLeft / sampleRate);
+            longDelayOutputRight[i] = getInterpolatedSample(modulatedDelayRight / sampleRate);
 
-            longDelayOutputLeft = longDelayInputLeft * 0.5f + longDelayOutputLeft * 0.5f;
-            longDelayOutputRight = longDelayInputRight * 0.5f + longDelayOutputRight * 0.5f;
-
-            // Apply Hadamard mixing for long delays
-            for (int j = 0; j < 4; ++j)
-            {
-                mixedLongOutputsLeft[j] += hadamardMatrix[j][i] * longDelayOutputLeft;
-                mixedLongOutputsRight[j] += hadamardMatrix[j][i] * longDelayOutputRight;
-            }
+            longDelayOutputLeft[i] = longDelayInputLeft * 0.5f + longDelayOutputLeft[i] * 0.5f;
+            longDelayOutputRight[i] = longDelayInputRight * 0.5f + longDelayOutputRight[i] * 0.5f;
         }
 
-        // Invert polarity of some delays for right channel
-        mixedShortOutputsRight[1] *= -1.0f;
-        mixedShortOutputsRight[3] *= -1.0f;
-
-        // Calculate the output samples
+        // Unrolled Hadamard mixing and output calculation
         float outputSampleLeft = inputSampleLeft * dryMix;
         float outputSampleRight = inputSampleRight * dryMix;
 
-        for (int i = 0; i < 4; ++i)
-        {
-            outputSampleLeft += mixedShortOutputsLeft[i] * shortDelayMix + mixedLongOutputsLeft[i] * longDelayMix;
-            outputSampleRight += mixedShortOutputsRight[i] * shortDelayMix + mixedLongOutputsRight[i] * longDelayMix;
-        }
+        // Short delays
+        float shortLeft0 = shortDelayOutputLeft[0] + shortDelayOutputLeft[1] + shortDelayOutputLeft[2] + shortDelayOutputLeft[3];
+        float shortLeft1 = shortDelayOutputLeft[0] - shortDelayOutputLeft[1] + shortDelayOutputLeft[2] - shortDelayOutputLeft[3];
+        float shortLeft2 = shortDelayOutputLeft[0] + shortDelayOutputLeft[1] - shortDelayOutputLeft[2] - shortDelayOutputLeft[3];
+        float shortLeft3 = shortDelayOutputLeft[0] - shortDelayOutputLeft[1] - shortDelayOutputLeft[2] + shortDelayOutputLeft[3];
+
+        float shortRight0 = shortDelayOutputRight[0] + shortDelayOutputRight[1] + shortDelayOutputRight[2] + shortDelayOutputRight[3];
+        float shortRight1 = -(shortDelayOutputRight[0] - shortDelayOutputRight[1] + shortDelayOutputRight[2] - shortDelayOutputRight[3]);
+        float shortRight2 = shortDelayOutputRight[0] + shortDelayOutputRight[1] - shortDelayOutputRight[2] - shortDelayOutputRight[3];
+        float shortRight3 = -(shortDelayOutputRight[0] - shortDelayOutputRight[1] - shortDelayOutputRight[2] + shortDelayOutputRight[3]);
+
+        outputSampleLeft += (shortLeft0 + shortLeft1 + shortLeft2 + shortLeft3) * shortDelayMix * 0.25f;
+        outputSampleRight += (shortRight0 + shortRight1 + shortRight2 + shortRight3) * shortDelayMix * 0.25f;
+
+        // Long delays
+        float longLeft0 = longDelayOutputLeft[0] + longDelayOutputLeft[1] + longDelayOutputLeft[2] + longDelayOutputLeft[3];
+        float longLeft1 = longDelayOutputLeft[0] - longDelayOutputLeft[1] + longDelayOutputLeft[2] - longDelayOutputLeft[3];
+        float longLeft2 = longDelayOutputLeft[0] + longDelayOutputLeft[1] - longDelayOutputLeft[2] - longDelayOutputLeft[3];
+        float longLeft3 = longDelayOutputLeft[0] - longDelayOutputLeft[1] - longDelayOutputLeft[2] + longDelayOutputLeft[3];
+
+        float longRight0 = longDelayOutputRight[0] + longDelayOutputRight[1] + longDelayOutputRight[2] + longDelayOutputRight[3];
+        float longRight1 = longDelayOutputRight[0] - longDelayOutputRight[1] + longDelayOutputRight[2] - longDelayOutputRight[3];
+        float longRight2 = longDelayOutputRight[0] + longDelayOutputRight[1] - longDelayOutputRight[2] - longDelayOutputRight[3];
+        float longRight3 = longDelayOutputRight[0] - longDelayOutputRight[1] - longDelayOutputRight[2] + longDelayOutputRight[3];
+
+        outputSampleLeft += (longLeft0 + longLeft1 + longLeft2 + longLeft3) * longDelayMix * 0.25f;
+        outputSampleRight += (longRight0 + longRight1 + longRight2 + longRight3) * longDelayMix * 0.25f;
 
         // Apply soft clipping and final output gain
         outputSampleLeft = applyGain(softClip(outputSampleLeft), outputGain);
