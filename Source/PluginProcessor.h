@@ -79,6 +79,13 @@ private:
     
     std::array<float, 4> basedelayTimes;
     std::array<float, 4> modulatedDelayTimes;
+    
+    float lowpassFilterRate = 0.95f; // Controls how quickly the lowpass filter frequency decreases
+    std::array<float, 8> diffusionFeedback = {0}; // 4 for left, 4 for right
+    float diffusionFeedbackAmount = 0.6f; // Adjust this value to control the amount of diffusion feedback
+    float diffusionMix = 0.7f; // Adjust this to control the mix of diffused signal and input
+    float diffusionToLongMix = 0.3f; // Adjust this to control how much diffusion is fed into long delays
+    float longFeedback = 0.5f;
 
     float calculateAmplitude(const std::array<float, 4>& signal);
 

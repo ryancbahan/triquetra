@@ -281,7 +281,7 @@ void TriquetraAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juc
         std::array<float, 4> shortDelayOutputLeft = {0.0f, 0.0f, 0.0f, 0.0f};
         std::array<float, 4> shortDelayOutputRight = {0.0f, 0.0f, 0.0f, 0.0f};
 
-        // Process short delays with diffusion
+        // Process short delays with increased diffusion
         for (int i = 0; i < 4; ++i)
         {
             modulationPhases[i] += modulationFrequencies[i] / sampleRate;
@@ -298,6 +298,10 @@ void TriquetraAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juc
 
             shortDelayOutputLeft[i] = getInterpolatedSample(modulatedDelayLeft / sampleRate);
             shortDelayOutputRight[i] = getInterpolatedSample(modulatedDelayRight / sampleRate);
+
+            // Add feedback from previous iteration
+            shortDelayOutputLeft[i] += diffusionFeedback[i] * diffusionFeedbackAmount;
+            shortDelayOutputRight[i] += diffusionFeedback[i + 4] * diffusionFeedbackAmount;
         }
 
         // Apply Hadamard matrix and feedback for diffusion
@@ -315,9 +319,13 @@ void TriquetraAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juc
             diffusedLeft[i] = lowpassFilterLeft.processSample(diffusedLeft[i]);
             diffusedRight[i] = lowpassFilterRight.processSample(diffusedRight[i]);
 
-            // Apply feedback
-            diffusedLeft[i] = diffusedLeft[i] * feedback + processedInputLeft * (1.0f - feedback);
-            diffusedRight[i] = diffusedRight[i] * feedback + processedInputRight * (1.0f - feedback);
+            // Store for next iteration's feedback
+            diffusionFeedback[i] = diffusedLeft[i];
+            diffusionFeedback[i + 4] = diffusedRight[i];
+
+            // Mix with input for increased density
+            diffusedLeft[i] = diffusedLeft[i] * diffusionMix + processedInputLeft * (1.0f - diffusionMix);
+            diffusedRight[i] = diffusedRight[i] * diffusionMix + processedInputRight * (1.0f - diffusionMix);
         }
 
         // Calculate amplitudes for all-pass filter modulation
@@ -341,7 +349,7 @@ void TriquetraAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juc
         std::array<float, 4> longDelayOutputLeft = {0.0f, 0.0f, 0.0f, 0.0f};
         std::array<float, 4> longDelayOutputRight = {0.0f, 0.0f, 0.0f, 0.0f};
 
-        // Process long delays
+        // Process long delays with added diffusion
         for (int i = 0; i < 4; ++i)
         {
             modulationPhases[i+4] += modulationFrequencies[i+4] / sampleRate;
@@ -356,14 +364,15 @@ void TriquetraAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juc
             float modulatedDelayLeft = baseDelayLeft + (modulationLeft * longModulationDepth * baseDelayLeft);
             float modulatedDelayRight = baseDelayRight + (modulationRight * longModulationDepth * baseDelayRight);
 
-            float longDelayInputLeft = processedInputLeft * 0.5f + allPassOutputLeft[i] * 0.5f;
-            float longDelayInputRight = processedInputRight * 0.5f + allPassOutputRight[i] * 0.5f;
+            // Mix diffused signal with input for long delays
+            float longDelayInputLeft = processedInputLeft * (1.0f - diffusionToLongMix) + allPassOutputLeft[i] * diffusionToLongMix;
+            float longDelayInputRight = processedInputRight * (1.0f - diffusionToLongMix) + allPassOutputRight[i] * diffusionToLongMix;
 
             longDelayOutputLeft[i] = getInterpolatedSample(modulatedDelayLeft / sampleRate);
             longDelayOutputRight[i] = getInterpolatedSample(modulatedDelayRight / sampleRate);
 
-            longDelayOutputLeft[i] = longDelayInputLeft * 0.5f + longDelayOutputLeft[i] * 0.5f;
-            longDelayOutputRight[i] = longDelayInputRight * 0.5f + longDelayOutputRight[i] * 0.5f;
+            longDelayOutputLeft[i] = longDelayInputLeft * (1.0f - longFeedback) + longDelayOutputLeft[i] * longFeedback;
+            longDelayOutputRight[i] = longDelayInputRight * (1.0f - longFeedback) + longDelayOutputRight[i] * longFeedback;
         }
 
         // Unrolled Hadamard matrix multiplication for long delays
