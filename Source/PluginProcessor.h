@@ -32,7 +32,6 @@ public:
 
     const juce::String getName() const override;
     bool isBusesLayoutSupported (const BusesLayout& layouts) const;
-    std::array<juce::dsp::IIR::Filter<float>, 2> lowpassFilter;
     void initializeLowpassFilter();
     bool acceptsMidi() const override;
     bool producesMidi() const override;
@@ -74,7 +73,8 @@ private:
     std::array<float, 8> modulationPhases;
 
     std::array<std::array<float, 4>, 4> hadamardMatrix;
-    std::array<juce::dsp::IIR::Filter<float>, 2> lowpassFilters;
+    juce::dsp::IIR::Filter<float> lowpassFilterLeft;
+    juce::dsp::IIR::Filter<float> lowpassFilterRight;
     std::array<AllPassFilter, 4> allPassFilters;
     
     std::array<float, 4> basedelayTimes;
