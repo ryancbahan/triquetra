@@ -275,7 +275,10 @@ void TriquetraAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, ju
             shortDelayOutputs[i] = getInterpolatedSample(modulatedDelay / sampleRate);
         }
 
-        // Process long delays (echoes)
+        // Apply Hadamard matrix to mix short delay outputs
+        std::array<float, 4> mixedShortOutputs = applyHadamardMixing(shortDelayOutputs);
+
+        // Process long delays (echoes), feeding in the mixed short delay output
         for (int i = 0; i < 4; ++i)
         {
             float baseDelay = longDelayTimes[i] * sampleRate;
@@ -284,17 +287,24 @@ void TriquetraAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, ju
             float modulatedDelay = baseDelay + (modulation * longModulationDepth * baseDelay);
             modulatedDelay = std::max(modulatedDelay, 0.0f);
             
+            // Mix the input sample with all mixed short delay outputs
+            float longDelayInput = inputSample * 0.5f;
+            for (int j = 0; j < 4; ++j)
+            {
+                longDelayInput += mixedShortOutputs[j] * 0.125f; // Distribute the short delay outputs evenly
+            }
+            
             longDelayOutputs[i] = getInterpolatedSample(modulatedDelay / sampleRate);
+            longDelayOutputs[i] = longDelayInput * 0.5f + longDelayOutputs[i] * 0.5f;
         }
 
-        // Apply Hadamard matrix to mix modulated outputs
-        std::array<float, 4> mixedShortOutputs = applyHadamardMixing(shortDelayOutputs);
+        // Apply Hadamard matrix to mix long delay outputs
         std::array<float, 4> mixedLongOutputs = applyHadamardMixing(longDelayOutputs);
 
         float feedbackSample = 0.0f;
         for (int i = 0; i < 4; ++i)
         {
-            feedbackSample += mixedShortOutputs[i] * 0.5f + mixedLongOutputs[i] * 0.5f;
+            feedbackSample += mixedLongOutputs[i];
         }
         feedbackSample *= feedback * 0.25f;
 
@@ -306,10 +316,10 @@ void TriquetraAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, ju
         delayBuffer[writePosition] = newSample;
         writePosition = (writePosition + 1) % delayBufferSize;
 
-        float outputSample = inputSample;
+        float outputSample = inputSample * 0.7f;  // Adjust dry/wet mix as needed
         for (int i = 0; i < 4; ++i)
         {
-            outputSample += mixedShortOutputs[i] * 0.15f + mixedLongOutputs[i] * 0.1f;
+            outputSample += mixedShortOutputs[i] * 0.15f + mixedLongOutputs[i] * 0.15f;
         }
 
         for (int channel = 0; channel < totalNumOutputChannels; ++channel)
