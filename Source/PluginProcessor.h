@@ -100,6 +100,8 @@ private:
     float dryMix = 0.7f;
     float shortDelayMix = 0.15f;
     float longDelayMix = 0.15f;
+    std::array<float, 4> longModulationPhases = {0.0f, 0.0f, 0.0f, 0.0f};
+
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (TriquetraAudioProcessor)
 };

@@ -25,9 +25,8 @@ TriquetraAudioProcessor::TriquetraAudioProcessor()
     shortDelayTimes = {0.0443f * 2, 0.0531f * 2, 0.0667f * 2, 0.0798f * 2}; // Prime number ratios for less repetitive echoes
     feedback = 0.6f;
     longDelayTimes = {0.25f, 0.5f, 0.75f, 1.0f};
-    shortModulationDepth = 0.0025f;
+    shortModulationDepth = 0.0001f;
     longModulationDepth = 0.005f;
-    modulationDepth = 0.0025f; // Adjust as needed
     modulationFrequencies = {0.1f, 0.13f, 0.17f, 0.19f, 0.23f, 0.29f, 0.31f, 0.37f};
     phaseOffsets.fill(0.0f);
     phaseIncrements = {0.00001f, 0.000013f, 0.000017f, 0.000019f}; // Very slow changes
@@ -255,14 +254,24 @@ void TriquetraAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, ju
 
     float sampleRate = static_cast<float>(getSampleRate());
 
+    // Increase modulation rates for long delays
+    const std::array<float, 4> longModulationRates = {0.5f, 0.7f, 0.9f, 1.1f};
+
     for (int sample = 0; sample < buffer.getNumSamples(); ++sample)
     {
         // Update modulation phases
-        for (int i = 0; i < 8; ++i)
+        for (int i = 0; i < 4; ++i)
         {
             modulationPhases[i] += modulationFrequencies[i] / sampleRate;
             if (modulationPhases[i] >= 1.0f)
                 modulationPhases[i] -= 1.0f;
+        }
+        // Update long delay modulation phases separately
+        for (int i = 0; i < 4; ++i)
+        {
+            longModulationPhases[i] += longModulationRates[i] / sampleRate;
+            if (longModulationPhases[i] >= 1.0f)
+                longModulationPhases[i] -= 1.0f;
         }
 
         float inputSample = 0.0f;
@@ -302,13 +311,18 @@ void TriquetraAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, ju
             mixedShortOutputs[i] = applyGain(mixedShortOutputs[i], shortDelayGain);
         }
 
-        // Process long delays (echoes), feeding in the mixed short delay output
+        // Process long delays (echoes) with enhanced modulation
         for (int i = 0; i < 4; ++i)
         {
             float baseDelay = longDelayTimes[i] * sampleRate;
-            float modulation = std::sin(2.0f * juce::MathConstants<float>::pi * modulationPhases[i + 4]);
-            modulation = std::pow(std::abs(modulation), 0.5f) * std::copysign(1.0f, modulation);
-            float modulatedDelay = baseDelay + (modulation * longModulationDepth * baseDelay);
+            
+            // Use a combination of sine and triangle waves for more complex modulation
+            float sineMod = std::sin(2.0f * juce::MathConstants<float>::pi * longModulationPhases[i]);
+            float triangleMod = 2.0f * std::abs(2.0f * (longModulationPhases[i] - std::floor(longModulationPhases[i] + 0.5f))) - 1.0f;
+            float modulation = (sineMod + triangleMod) * 0.5f;
+            
+            // Increase modulation depth for long delays
+            float modulatedDelay = baseDelay + (modulation * longModulationDepth * baseDelay * 2.0f);
             modulatedDelay = std::max(modulatedDelay, 0.0f);
             
             // Mix the processed input with all mixed short delay outputs
