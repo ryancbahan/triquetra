@@ -201,14 +201,15 @@ void TriquetraAudioProcessor::initializeLowpassFilter(double sampleRate)
 
 void TriquetraAudioProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
 {
-    const int maxDelaySamples = static_cast<int>(sampleRate * 1.1); // Slightly over 1 second for safety
+    // Increase delay buffer size to accommodate longer delays (up to 6 seconds)
+    const int maxDelaySamples = static_cast<int>(sampleRate * 6.1); // 6 seconds plus a bit of headroom
     delayBufferSize = maxDelaySamples;
     delayBuffer.resize(delayBufferSize, 0.0f);
     writePosition = 0;
 
     modulatedShortDelayTimes = shortDelayTimes;
-    modulatedLongDelayTimes = longDelayTimes;
-    
+    modulatedLongDelayTimes = {1.0f, 2.0f, 4.0f, 6.0f};  // Extend long delay times up to 6 seconds
+
     initializeLowpassFilter(sampleRate);
 
     for (auto& delayLine : delayLines)
@@ -294,6 +295,9 @@ void TriquetraAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juc
     float sampleRate = static_cast<float>(getSampleRate());
     const float stereoOffset = 0.02f * sampleRate; // 20ms offset
 
+    const float feedbackCompressionThreshold = 0.8f; // Slightly higher threshold to handle long decay
+    const float feedbackCompressionRatio = 6.0f;     // More aggressive compression ratio to manage long tails
+
     for (int sample = 0; sample < buffer.getNumSamples(); ++sample)
     {
         float inputSampleLeft = buffer.getSample(0, sample);
@@ -326,8 +330,13 @@ void TriquetraAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juc
             shortDelayOutputLeft[i] = getInterpolatedSample(modulatedDelayLeft / sampleRate);
             shortDelayOutputRight[i] = getInterpolatedSample(modulatedDelayRight / sampleRate);
 
-            shortDelayOutputLeft[i] += diffusionFeedback[i] * diffusionFeedbackAmount * 1.2f; // Increase feedback for more presence
-            shortDelayOutputRight[i] += diffusionFeedback[i + 4] * diffusionFeedbackAmount * 1.2f;
+            // Apply feedback compression to manage long tails and avoid distortion
+            shortDelayOutputLeft[i] = applyCompression(shortDelayOutputLeft[i], feedbackCompressionThreshold, feedbackCompressionRatio);
+            shortDelayOutputRight[i] = applyCompression(shortDelayOutputRight[i], feedbackCompressionThreshold, feedbackCompressionRatio);
+
+            // Add feedback
+            shortDelayOutputLeft[i] += diffusionFeedback[i] * diffusionFeedbackAmount;
+            shortDelayOutputRight[i] += diffusionFeedback[i + 4] * diffusionFeedbackAmount;
 
             float hadamardLeft = 0.0f, hadamardRight = 0.0f;
             for (int j = 0; j < 4; ++j)
@@ -339,25 +348,8 @@ void TriquetraAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juc
             diffusionFeedback[i] = lowpassFilterLeft.processSample(hadamardLeft);
             diffusionFeedback[i + 4] = lowpassFilterRight.processSample(hadamardRight);
 
-            shortDelayOutputLeft[i] = diffusionFeedback[i] * diffusionMix * 1.5f + processedInputLeft * (1.0f - diffusionMix);
-            shortDelayOutputRight[i] = diffusionFeedback[i + 4] * diffusionMix * 1.5f + processedInputRight * (1.0f - diffusionMix);
-        }
-
-        // All-Pass filtering for more diffusion in short delays
-        float amplitudeLeft = (std::abs(shortDelayOutputLeft[0]) + std::abs(shortDelayOutputLeft[1]) + std::abs(shortDelayOutputLeft[2]) + std::abs(shortDelayOutputLeft[3])) * 0.25f;
-        float amplitudeRight = (std::abs(shortDelayOutputRight[0]) + std::abs(shortDelayOutputRight[1]) + std::abs(shortDelayOutputRight[2]) + std::abs(shortDelayOutputRight[3])) * 0.25f;
-
-        float allPassOutputLeft[4], allPassOutputRight[4];
-        for (int i = 0; i < 4; ++i)
-        {
-            float coefficientLeft = std::clamp(0.2f + 0.6f * amplitudeRight, 0.01f, 0.99f);
-            float coefficientRight = std::clamp(0.2f + 0.6f * amplitudeLeft, 0.01f, 0.99f);
-
-            allPassFilters[i].setCoefficient(coefficientLeft);
-            allPassOutputLeft[i] = allPassFilters[i].process(shortDelayOutputLeft[i]);
-
-            allPassFilters[i].setCoefficient(coefficientRight);
-            allPassOutputRight[i] = allPassFilters[i].process(shortDelayOutputRight[i]);
+            shortDelayOutputLeft[i] = diffusionFeedback[i] * diffusionMix + processedInputLeft * (1.0f - diffusionMix);
+            shortDelayOutputRight[i] = diffusionFeedback[i + 4] * diffusionMix + processedInputRight * (1.0f - diffusionMix);
         }
 
         // Process long delays and apply Hadamard matrix
@@ -378,14 +370,15 @@ void TriquetraAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juc
             float modulatedDelayLeft = baseDelayLeft + (modulationLeft * longModulationDepth * baseDelayLeft);
             float modulatedDelayRight = baseDelayRight + (modulationRight * longModulationDepth * baseDelayRight);
 
-            float longDelayInputLeft = allPassOutputLeft[i] * (1.5f - diffusionToLongMix) + shortDelayOutputLeft[i] * diffusionToLongMix;
-            float longDelayInputRight = allPassOutputRight[i] * (1.5f - diffusionToLongMix) + shortDelayOutputRight[i] * diffusionToLongMix;
+            float longDelayInputLeft = shortDelayOutputLeft[i] * (1.0f - diffusionToLongMix) + shortDelayOutputLeft[i] * diffusionToLongMix;
+            float longDelayInputRight = shortDelayOutputRight[i] * (1.0f - diffusionToLongMix) + shortDelayOutputRight[i] * diffusionToLongMix;
 
             longDelayOutputLeft[i] = getInterpolatedSample(modulatedDelayLeft / sampleRate);
             longDelayOutputRight[i] = getInterpolatedSample(modulatedDelayRight / sampleRate);
 
-            longDelayOutputLeft[i] = longDelayInputLeft * (1.0f - longFeedback) + longDelayOutputLeft[i] * longFeedback;
-            longDelayOutputRight[i] = longDelayInputRight * (1.0f - longFeedback) + longDelayOutputRight[i] * longFeedback;
+            // Increase the feedback slightly for extended decay without distortion
+            longDelayOutputLeft[i] = longDelayInputLeft * (1.0f - longFeedback) + longDelayOutputLeft[i] * (longFeedback + 0.05f);
+            longDelayOutputRight[i] = longDelayInputRight * (1.0f - longFeedback) + longDelayOutputRight[i] * (longFeedback + 0.05f);
         }
 
         // Apply Hadamard matrix to long delays for further spreading
