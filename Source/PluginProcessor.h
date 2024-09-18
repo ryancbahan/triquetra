@@ -79,6 +79,7 @@ private:
     
     std::array<float, 4> basedelayTimes;
     std::array<float, 4> modulatedDelayTimes;
+    void updateLowpassCoefficients();
     
     float lowpassFilterRate = 0.95f; // Controls how quickly the lowpass filter frequency decreases
     std::array<float, 8> diffusionFeedback = {0}; // 4 for left, 4 for right

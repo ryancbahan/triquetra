@@ -242,6 +242,13 @@ float TriquetraAudioProcessor::applyGain(float sample, float gainFactor)
     return sample * gainFactor;
 }
 
+void TriquetraAudioProcessor::updateLowpassCoefficients()
+{
+    float cutoffFrequency = 15000.0f * lowpassFilterRate;
+    auto coefficients = juce::dsp::IIR::Coefficients<float>::makeLowPass(getSampleRate(), cutoffFrequency, 0.707f);
+    lowpassFilterLeft.coefficients = coefficients;
+    lowpassFilterRight.coefficients = coefficients;
+}
 void TriquetraAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midiMessages)
 {
     juce::ScopedNoDenormals noDenormals;
@@ -260,10 +267,7 @@ void TriquetraAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juc
     static int sampleCounter = 0;
     if (sampleCounter == 0)
     {
-        float cutoffFrequency = 15000.0f; // Starting cutoff frequency
-        auto coefficients = juce::dsp::IIR::Coefficients<float>::makeLowPass(sampleRate, cutoffFrequency, 0.707f);
-        lowpassFilterLeft.coefficients = coefficients;
-        lowpassFilterRight.coefficients = coefficients;
+        updateLowpassCoefficients();
     }
     sampleCounter = (sampleCounter + 1) % 1000; // Update every 1000 samples
 
@@ -281,7 +285,7 @@ void TriquetraAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juc
         std::array<float, 4> shortDelayOutputLeft = {0.0f, 0.0f, 0.0f, 0.0f};
         std::array<float, 4> shortDelayOutputRight = {0.0f, 0.0f, 0.0f, 0.0f};
 
-        // Process short delays with increased diffusion
+        // Process short delays and apply Hadamard matrix in one loop
         for (int i = 0; i < 4; ++i)
         {
             modulationPhases[i] += modulationFrequencies[i] / sampleRate;
@@ -302,54 +306,28 @@ void TriquetraAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juc
             // Add feedback from previous iteration
             shortDelayOutputLeft[i] += diffusionFeedback[i] * diffusionFeedbackAmount;
             shortDelayOutputRight[i] += diffusionFeedback[i + 4] * diffusionFeedbackAmount;
-        }
 
-        // Apply Hadamard matrix and feedback for diffusion
-        std::array<float, 4> diffusedLeft = {0.0f, 0.0f, 0.0f, 0.0f};
-        std::array<float, 4> diffusedRight = {0.0f, 0.0f, 0.0f, 0.0f};
-
-        for (int i = 0; i < 4; ++i)
-        {
+            // Apply Hadamard matrix inline
+            float hadamardLeft = 0.0f, hadamardRight = 0.0f;
             for (int j = 0; j < 4; ++j)
             {
-                diffusedLeft[i] += hadamardMatrix[i][j] * shortDelayOutputLeft[j];
-                diffusedRight[i] += hadamardMatrix[i][j] * shortDelayOutputRight[j];
+                hadamardLeft += hadamardMatrix[i][j] * shortDelayOutputLeft[j];
+                hadamardRight += hadamardMatrix[i][j] * shortDelayOutputRight[j];
             }
-            // Apply progressive filtering
-            diffusedLeft[i] = lowpassFilterLeft.processSample(diffusedLeft[i]);
-            diffusedRight[i] = lowpassFilterRight.processSample(diffusedRight[i]);
 
-            // Store for next iteration's feedback
-            diffusionFeedback[i] = diffusedLeft[i];
-            diffusionFeedback[i + 4] = diffusedRight[i];
+            // Apply lowpass filtering and store for next iteration's feedback
+            diffusionFeedback[i] = lowpassFilterLeft.processSample(hadamardLeft);
+            diffusionFeedback[i + 4] = lowpassFilterRight.processSample(hadamardRight);
 
             // Mix with input for increased density
-            diffusedLeft[i] = diffusedLeft[i] * diffusionMix + processedInputLeft * (1.0f - diffusionMix);
-            diffusedRight[i] = diffusedRight[i] * diffusionMix + processedInputRight * (1.0f - diffusionMix);
+            shortDelayOutputLeft[i] = diffusionFeedback[i] * diffusionMix + processedInputLeft * (1.0f - diffusionMix);
+            shortDelayOutputRight[i] = diffusionFeedback[i + 4] * diffusionMix + processedInputRight * (1.0f - diffusionMix);
         }
 
-        // Calculate amplitudes for all-pass filter modulation
-        float amplitudeLeft = calculateAmplitude(diffusedLeft);
-        float amplitudeRight = calculateAmplitude(diffusedRight);
-
-        // Process through all-pass filters with cross-modulation
-        float allPassOutputLeft[4], allPassOutputRight[4];
-        for (int i = 0; i < 4; ++i)
-        {
-            float coefficientLeft = std::clamp(0.2f + 0.6f * amplitudeRight, 0.01f, 0.99f);
-            float coefficientRight = std::clamp(0.2f + 0.6f * amplitudeLeft, 0.01f, 0.99f);
-
-            allPassFilters[i].setCoefficient(coefficientLeft);
-            allPassOutputLeft[i] = allPassFilters[i].process(diffusedLeft[i]);
-
-            allPassFilters[i].setCoefficient(coefficientRight);
-            allPassOutputRight[i] = allPassFilters[i].process(diffusedRight[i]);
-        }
-
+        // Process long delays
         std::array<float, 4> longDelayOutputLeft = {0.0f, 0.0f, 0.0f, 0.0f};
         std::array<float, 4> longDelayOutputRight = {0.0f, 0.0f, 0.0f, 0.0f};
 
-        // Process long delays with added diffusion
         for (int i = 0; i < 4; ++i)
         {
             modulationPhases[i+4] += modulationFrequencies[i+4] / sampleRate;
@@ -365,8 +343,8 @@ void TriquetraAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juc
             float modulatedDelayRight = baseDelayRight + (modulationRight * longModulationDepth * baseDelayRight);
 
             // Mix diffused signal with input for long delays
-            float longDelayInputLeft = processedInputLeft * (1.0f - diffusionToLongMix) + allPassOutputLeft[i] * diffusionToLongMix;
-            float longDelayInputRight = processedInputRight * (1.0f - diffusionToLongMix) + allPassOutputRight[i] * diffusionToLongMix;
+            float longDelayInputLeft = processedInputLeft * (1.0f - diffusionToLongMix) + shortDelayOutputLeft[i] * diffusionToLongMix;
+            float longDelayInputRight = processedInputRight * (1.0f - diffusionToLongMix) + shortDelayOutputRight[i] * diffusionToLongMix;
 
             longDelayOutputLeft[i] = getInterpolatedSample(modulatedDelayLeft / sampleRate);
             longDelayOutputRight[i] = getInterpolatedSample(modulatedDelayRight / sampleRate);
@@ -388,11 +366,11 @@ void TriquetraAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juc
 
         // Calculate final output
         float outputSampleLeft = inputSampleLeft * dryMix
-                               + (diffusedLeft[0] + diffusedLeft[1] + diffusedLeft[2] + diffusedLeft[3]) * shortDelayMix * 0.25f
+                               + (shortDelayOutputLeft[0] + shortDelayOutputLeft[1] + shortDelayOutputLeft[2] + shortDelayOutputLeft[3]) * shortDelayMix * 0.25f
                                + (longLeft0 + longLeft1 + longLeft2 + longLeft3) * longDelayMix * 0.25f;
 
         float outputSampleRight = inputSampleRight * dryMix
-                                + (diffusedRight[0] + diffusedRight[1] + diffusedRight[2] + diffusedRight[3]) * shortDelayMix * 0.25f
+                                + (shortDelayOutputRight[0] + shortDelayOutputRight[1] + shortDelayOutputRight[2] + shortDelayOutputRight[3]) * shortDelayMix * 0.25f
                                 + (longRight0 + longRight1 + longRight2 + longRight3) * longDelayMix * 0.25f;
 
         // Apply soft clipping and final output gain
