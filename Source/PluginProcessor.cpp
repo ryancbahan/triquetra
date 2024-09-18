@@ -268,6 +268,19 @@ void TriquetraAudioProcessor::updateLowpassCoefficients()
     lowpassFilterRight.coefficients = coefficients;
 }
 
+float TriquetraAudioProcessor::getInterpolatedSample(float delayTime)
+{
+    float delayTimeInSamples = delayTime * getSampleRate();
+    int readPosition = static_cast<int>(writePosition - delayTimeInSamples + delayBufferSize) % delayBufferSize;
+    
+    float fraction = delayTimeInSamples - static_cast<int>(delayTimeInSamples);
+    int nextSample = (readPosition + 1) % delayBufferSize;
+
+    // Linear interpolation
+    return delayBuffer[readPosition] + fraction * (delayBuffer[nextSample] - delayBuffer[readPosition]);
+}
+
+
 void TriquetraAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midiMessages)
 {
     juce::ScopedNoDenormals noDenormals;
@@ -310,8 +323,9 @@ void TriquetraAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juc
             float modulatedDelayLeft = baseDelayLeft + (modulationLeft * shortModulationDepth * baseDelayLeft);
             float modulatedDelayRight = baseDelayRight + (modulationRight * shortModulationDepth * baseDelayRight);
 
-            shortDelayOutputLeft[i] = getCubicInterpolatedSample(modulatedDelayLeft / sampleRate);
-            shortDelayOutputRight[i] = getCubicInterpolatedSample(modulatedDelayRight / sampleRate);
+            // Switch back to linear interpolation
+            shortDelayOutputLeft[i] = getInterpolatedSample(modulatedDelayLeft / sampleRate);
+            shortDelayOutputRight[i] = getInterpolatedSample(modulatedDelayRight / sampleRate);
 
             shortDelayOutputLeft[i] += diffusionFeedback[i] * diffusionFeedbackAmount;
             shortDelayOutputRight[i] += diffusionFeedback[i + 4] * diffusionFeedbackAmount;
@@ -350,8 +364,9 @@ void TriquetraAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juc
             float longDelayInputLeft = processedInputLeft * (1.0f - diffusionToLongMix) + shortDelayOutputLeft[i] * diffusionToLongMix;
             float longDelayInputRight = processedInputRight * (1.0f - diffusionToLongMix) + shortDelayOutputRight[i] * diffusionToLongMix;
 
-            longDelayOutputLeft[i] = getCubicInterpolatedSample(modulatedDelayLeft / sampleRate);
-            longDelayOutputRight[i] = getCubicInterpolatedSample(modulatedDelayRight / sampleRate);
+            // Switch back to linear interpolation for long delays
+            longDelayOutputLeft[i] = getInterpolatedSample(modulatedDelayLeft / sampleRate);
+            longDelayOutputRight[i] = getInterpolatedSample(modulatedDelayRight / sampleRate);
 
             longDelayOutputLeft[i] = longDelayInputLeft * (1.0f - longFeedback) + longDelayOutputLeft[i] * longFeedback;
             longDelayOutputRight[i] = longDelayInputRight * (1.0f - longFeedback) + longDelayOutputRight[i] * longFeedback;
