@@ -220,16 +220,33 @@ void TriquetraAudioProcessor::prepareToPlay (double sampleRate, int samplesPerBl
     initializeLowpassFilter(sampleRate);
 }
 
-float TriquetraAudioProcessor::getInterpolatedSample(float delayTime)
+float TriquetraAudioProcessor::getCubicInterpolatedSample(float delayTime)
 {
     float delayTimeInSamples = delayTime * getSampleRate();
-    int readPosition = static_cast<int>(writePosition - delayTimeInSamples + delayBufferSize) % delayBufferSize;
+    int intDelayTime = static_cast<int>(delayTimeInSamples);
     
-    float fraction = delayTimeInSamples - static_cast<int>(delayTimeInSamples);
-    int nextSample = (readPosition + 1) % delayBufferSize;
+    int readPosition = static_cast<int>(writePosition - intDelayTime + delayBufferSize) % delayBufferSize;
+    float fraction = delayTimeInSamples - intDelayTime;
+    
+    // Get the neighboring samples for cubic interpolation
+    int readPosition_1 = (readPosition - 1 + delayBufferSize) % delayBufferSize;
+    int readPosition2 = (readPosition + 1) % delayBufferSize;
+    int readPosition3 = (readPosition + 2) % delayBufferSize;
 
-    return delayBuffer[readPosition] + fraction * (delayBuffer[nextSample] - delayBuffer[readPosition]);
+    float y0 = delayBuffer[readPosition_1];
+    float y1 = delayBuffer[readPosition];
+    float y2 = delayBuffer[readPosition2];
+    float y3 = delayBuffer[readPosition3];
+
+    // Perform cubic interpolation
+    float a0 = y3 - y2 - y0 + y1;
+    float a1 = y0 - y1 - a0;
+    float a2 = y2 - y0;
+    float a3 = y1;
+
+    return a0 * fraction * fraction * fraction + a1 * fraction * fraction + a2 * fraction + a3;
 }
+
 
 float TriquetraAudioProcessor::softClip(float sample)
 {
@@ -278,7 +295,6 @@ void TriquetraAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juc
         std::array<float, 4> shortDelayOutputLeft = {0.0f, 0.0f, 0.0f, 0.0f};
         std::array<float, 4> shortDelayOutputRight = {0.0f, 0.0f, 0.0f, 0.0f};
 
-        // Process short delays
         for (int i = 0; i < 4; ++i)
         {
             modulationPhases[i] += modulationFrequencies[i] / sampleRate;
@@ -293,8 +309,9 @@ void TriquetraAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juc
             float modulatedDelayLeft = baseDelayLeft + (modulationLeft * shortModulationDepth * baseDelayLeft);
             float modulatedDelayRight = baseDelayRight + (modulationRight * shortModulationDepth * baseDelayRight);
 
-            shortDelayOutputLeft[i] = getInterpolatedSample(modulatedDelayLeft / sampleRate);
-            shortDelayOutputRight[i] = getInterpolatedSample(modulatedDelayRight / sampleRate);
+            // Use cubic interpolation instead of linear interpolation
+            shortDelayOutputLeft[i] = getCubicInterpolatedSample(modulatedDelayLeft / sampleRate);
+            shortDelayOutputRight[i] = getCubicInterpolatedSample(modulatedDelayRight / sampleRate);
 
             shortDelayOutputLeft[i] += diffusionFeedback[i] * diffusionFeedbackAmount;
             shortDelayOutputRight[i] += diffusionFeedback[i + 4] * diffusionFeedbackAmount;
@@ -316,7 +333,6 @@ void TriquetraAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juc
         std::array<float, 4> longDelayOutputLeft = {0.0f, 0.0f, 0.0f, 0.0f};
         std::array<float, 4> longDelayOutputRight = {0.0f, 0.0f, 0.0f, 0.0f};
 
-        // Process long delays
         for (int i = 0; i < 4; ++i)
         {
             modulationPhases[i+4] += modulationFrequencies[i+4] / sampleRate;
@@ -334,8 +350,9 @@ void TriquetraAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juc
             float longDelayInputLeft = processedInputLeft * (1.0f - diffusionToLongMix) + shortDelayOutputLeft[i] * diffusionToLongMix;
             float longDelayInputRight = processedInputRight * (1.0f - diffusionToLongMix) + shortDelayOutputRight[i] * diffusionToLongMix;
 
-            longDelayOutputLeft[i] = getInterpolatedSample(modulatedDelayLeft / sampleRate);
-            longDelayOutputRight[i] = getInterpolatedSample(modulatedDelayRight / sampleRate);
+            // Use cubic interpolation instead of linear interpolation
+            longDelayOutputLeft[i] = getCubicInterpolatedSample(modulatedDelayLeft / sampleRate);
+            longDelayOutputRight[i] = getCubicInterpolatedSample(modulatedDelayRight / sampleRate);
 
             longDelayOutputLeft[i] = longDelayInputLeft * (1.0f - longFeedback) + longDelayOutputLeft[i] * longFeedback;
             longDelayOutputRight[i] = longDelayInputRight * (1.0f - longFeedback) + longDelayOutputRight[i] * longFeedback;
@@ -348,24 +365,13 @@ void TriquetraAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juc
         float wetSignalRight = (shortDelayOutputRight[0] + shortDelayOutputRight[1] + shortDelayOutputRight[2] + shortDelayOutputRight[3]) * 0.25f
                              + (longDelayOutputRight[0] + longDelayOutputRight[1] + longDelayOutputRight[2] + longDelayOutputRight[3]) * 0.25f;
 
-        // Apply compression to manage peaks in the wet signal
-        float threshold = 0.9f;  // Threshold for compression
-        float compressionRatio = 4.0f; // Compression ratio for controlling peaks
-
-        wetSignalLeft = applyCompression(wetSignalLeft, threshold, compressionRatio);
-        wetSignalRight = applyCompression(wetSignalRight, threshold, compressionRatio);
-
         // Apply dry/wet mix
         float outputSampleLeft = inputSampleLeft * dryMix + wetSignalLeft * wetMix;
         float outputSampleRight = inputSampleRight * dryMix + wetSignalRight * wetMix;
 
-        // Apply final limiter to prevent clipping
-        outputSampleLeft = softClip(outputSampleLeft);
-        outputSampleRight = softClip(outputSampleRight);
-
         // Apply soft clipping and final output gain
-        outputSampleLeft = applyGain(outputSampleLeft, outputGain);
-        outputSampleRight = applyGain(outputSampleRight, outputGain);
+        outputSampleLeft = softClip(applyGain(outputSampleLeft, outputGain));
+        outputSampleRight = softClip(applyGain(outputSampleRight, outputGain));
 
         // Store the output samples for feedback in the next iteration
         lastOutputSampleLeft = outputSampleLeft;
@@ -380,6 +386,7 @@ void TriquetraAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juc
         writePosition = (writePosition + 1) % delayBufferSize;
     }
 }
+
 
 // Compression function for managing peaks
 float TriquetraAudioProcessor::applyCompression(float sample, float threshold, float ratio)

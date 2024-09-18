@@ -62,6 +62,9 @@ private:
     std::array<float, 4> longDelayTimes;
     std::array<float, 4> modulatedShortDelayTimes;
     std::array<float, 4> modulatedLongDelayTimes;
+    
+    float getCubicInterpolatedSample(float delayTime);
+
 
     float globalFeedback;
     float lastOutputSampleLeft;
