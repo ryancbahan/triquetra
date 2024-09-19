@@ -236,6 +236,19 @@ void TriquetraAudioProcessor::prepareToPlay(double sampleRate, int samplesPerBlo
 
       lowpassFilterLeft.prepare(spec);
       lowpassFilterRight.prepare(spec);
+    
+    for (auto& filter : allPassFiltersShort)
+    {
+        filter.prepare(spec);
+        filter.coefficients = juce::dsp::IIR::Coefficients<float>::makeAllPass(sampleRate, 800.0); // Example frequency, tweak as needed
+    }
+
+    // Initialize All-Pass Filters (long delays)
+    for (auto& filter : allPassFiltersLong)
+    {
+        filter.prepare(spec);
+        filter.coefficients = juce::dsp::IIR::Coefficients<float>::makeAllPass(sampleRate, 400.0); // Example frequency, tweak as needed
+    }
 }
 
 float TriquetraAudioProcessor::softClip(float sample)
@@ -314,7 +327,7 @@ void TriquetraAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juc
         std::array<float, 8> longDelayOutputLeft = { 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f }; // 8 taps for long delays
         std::array<float, 8> longDelayOutputRight = { 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f }; // 8 taps for long delays
 
-        // Process short delays
+        // Process short delays and apply all-pass filtering with light modulation
         for (int i = 0; i < 4; ++i)
         {
             modulationPhases[i] += (modulationFrequencies[i] * 2.0f) / sampleRate;
@@ -328,6 +341,10 @@ void TriquetraAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juc
 
             shortDelayOutputLeft[i] = getInterpolatedSample(modulatedDelayLeft / sampleRate);
             shortDelayOutputRight[i] = getInterpolatedSample(modulatedDelayRight / sampleRate);
+
+            // Apply all-pass filtering to short delays for diffusion
+            shortDelayOutputLeft[i] = allPassFiltersShort[i].processSample(shortDelayOutputLeft[i]);
+            shortDelayOutputRight[i] = allPassFiltersShort[i].processSample(shortDelayOutputRight[i]);
         }
 
         // Apply Hadamard matrix for short delays
@@ -343,7 +360,7 @@ void TriquetraAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juc
             }
         }
 
-        // Process long delays with bloom effect and subdivisions
+        // Process long delays with bloom effect, subdivisions, and stronger modulation
         for (int i = 0; i < 4; ++i)
         {
             modulationPhases[i + 4] += modulationFrequencies[i + 4] * 2.0f / sampleRate;
@@ -370,6 +387,10 @@ void TriquetraAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juc
 
             longDelayOutputLeft[i + 4] += bloomLeftSmall * bloomFeedbackGain + bloomLeftLarge * bloomFeedbackGain;
             longDelayOutputRight[i + 4] += bloomRightSmall * bloomFeedbackGain + bloomRightLarge * bloomFeedbackGain;
+
+            // Apply all-pass filtering with strong modulation to long delays
+            longDelayOutputLeft[i] = allPassFiltersLong[i].processSample(longDelayOutputLeft[i]);
+            longDelayOutputRight[i] = allPassFiltersLong[i].processSample(longDelayOutputRight[i]);
         }
 
         // Apply Hadamard matrix to long delays

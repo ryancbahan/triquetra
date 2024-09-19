@@ -102,7 +102,10 @@ private:
     // LFO-related members
     float lfoDepth;
     void initializeLowpassFilter(double sampleRate);
-    
+    // Arrays for All-Pass Filters
+    std::array<juce::dsp::IIR::Filter<float>, 4> allPassFiltersShort;
+    std::array<juce::dsp::IIR::Filter<float>, 4> allPassFiltersLong;
+
     std::array<float, 4> phaseOffsets;
      std::array<float, 4> phaseIncrements;
      float modulationDepth;
