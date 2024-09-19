@@ -295,6 +295,9 @@ void TriquetraAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juc
         std::array<float, 4> shortDelayOutputLeft = { 0.0f, 0.0f, 0.0f, 0.0f };
         std::array<float, 4> shortDelayOutputRight = { 0.0f, 0.0f, 0.0f, 0.0f };
 
+        std::array<float, 4> allPassOutputLeft = { 0.0f, 0.0f, 0.0f, 0.0f };
+        std::array<float, 4> allPassOutputRight = { 0.0f, 0.0f, 0.0f, 0.0f };
+
         // Process short delays with immediate irregularity and subdivision
         for (int i = 0; i < 4; ++i)
         {
@@ -334,6 +337,20 @@ void TriquetraAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juc
             // More diffusion for short delays
             shortDelayOutputLeft[i] = diffusionFeedback[i] * diffusionMix + processedInputLeft * (1.0f - diffusionMix);
             shortDelayOutputRight[i] = diffusionFeedback[i + 4] * diffusionMix + processedInputRight * (1.0f - diffusionMix);
+
+            // Calculate amplitude for all-pass filter modulation
+            float amplitudeLeft = std::abs(shortDelayOutputLeft[i]);
+            float amplitudeRight = std::abs(shortDelayOutputRight[i]);
+
+            // Independent all-pass filters for each delay line
+            float coefficientLeft = std::clamp(0.2f + 0.6f * amplitudeRight, 0.01f, 0.99f);
+            float coefficientRight = std::clamp(0.2f + 0.6f * amplitudeLeft, 0.01f, 0.99f);
+
+            allPassFilters[i].setCoefficient(coefficientLeft);
+            allPassOutputLeft[i] = allPassFilters[i].process(shortDelayOutputLeft[i]);
+
+            allPassFilters[i].setCoefficient(coefficientRight);
+            allPassOutputRight[i] = allPassFilters[i].process(shortDelayOutputRight[i]);
         }
 
         // Process long delays with cascading bloom and more immediate irregularity
@@ -356,8 +373,8 @@ void TriquetraAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juc
             float modulatedDelayRight = baseDelayRight + (modulationRight * baseDelayRight);
 
             // Input from short delay + feedback
-            float longDelayInputLeft = shortDelayOutputLeft[i] * (1.0f - diffusionToLongMix) + shortDelayOutputLeft[i] * longDelayReverbMix;
-            float longDelayInputRight = shortDelayOutputRight[i] * (1.0f - diffusionToLongMix) + shortDelayOutputRight[i] * longDelayReverbMix;
+            float longDelayInputLeft = allPassOutputLeft[i] * (1.0f - diffusionToLongMix) + allPassOutputLeft[i] * longDelayReverbMix;
+            float longDelayInputRight = allPassOutputRight[i] * (1.0f - diffusionToLongMix) + allPassOutputRight[i] * longDelayReverbMix;
 
             longDelayOutputLeft[i] = getInterpolatedSample(modulatedDelayLeft / sampleRate);
             longDelayOutputRight[i] = getInterpolatedSample(modulatedDelayRight / sampleRate);
@@ -367,11 +384,11 @@ void TriquetraAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juc
             longDelayOutputRight[i] = longDelayInputRight * (1.0f - longFeedback) + longDelayOutputRight[i] * feedbackGain;
         }
 
-        // Final wet signal mix from short and long delay outputs
-        float wetSignalLeft = (shortDelayOutputLeft[0] + shortDelayOutputLeft[1] + shortDelayOutputLeft[2] + shortDelayOutputLeft[3]) * 0.25f
+        // Final wet signal mix from short (all-passed) and long delay outputs
+        float wetSignalLeft = (allPassOutputLeft[0] + allPassOutputLeft[1] + allPassOutputLeft[2] + allPassOutputLeft[3]) * 0.25f
                             + (longDelayOutputLeft[0] + longDelayOutputLeft[1] + longDelayOutputLeft[2] + longDelayOutputLeft[3]) * 0.25f;
 
-        float wetSignalRight = (shortDelayOutputRight[0] + shortDelayOutputRight[1] + shortDelayOutputRight[2] + shortDelayOutputRight[3]) * 0.25f
+        float wetSignalRight = (allPassOutputRight[0] + allPassOutputRight[1] + allPassOutputRight[2] + allPassOutputRight[3]) * 0.25f
                              + (longDelayOutputRight[0] + longDelayOutputRight[1] + longDelayOutputRight[2] + longDelayOutputRight[3]) * 0.25f;
 
         // Apply dry/wet mix and output gain
