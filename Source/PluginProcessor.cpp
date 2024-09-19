@@ -271,11 +271,11 @@ void TriquetraAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juc
     float sampleRate = static_cast<float>(getSampleRate());
     const float stereoOffset = 0.02f * sampleRate;
 
-    // Boosted irregularity and modulation settings
-    const float shortDelayModDepth = 0.003f;  // Increased modulation depth
-    const float longDelayModDepth = 0.1f;  // More pronounced depth for long delays
-    const float allPassModDepth = 0.5f;   // Modulation depth for all-pass filter evolution
-    const float modulationRateMultiplier = 2.0f; // Boost modulation rates for dramatic effect
+    // Increased modulation depth and rate for exaggeration
+    const float shortDelayModDepth = 0.003f;
+    const float longDelayModDepth = 0.15f;  // Further increase modulation depth for long delays
+    const float allPassModDepth = 0.9f;     // Maximize the modulation depth for all-pass filters
+    const float modulationRateMultiplier = 4.0f; // Dramatically increase modulation rates for effect
 
     for (int sample = 0; sample < buffer.getNumSamples(); ++sample)
     {
@@ -293,7 +293,7 @@ void TriquetraAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juc
         std::array<float, 4> longDelayOutputLeft = { 0.0f, 0.0f, 0.0f, 0.0f };
         std::array<float, 4> longDelayOutputRight = { 0.0f, 0.0f, 0.0f, 0.0f };
 
-        // Process short delays with more pronounced irregularity
+        // Process short delays
         for (int i = 0; i < 4; ++i)
         {
             modulationPhases[i] += (modulationFrequencies[i] * modulationRateMultiplier) / sampleRate;
@@ -315,7 +315,7 @@ void TriquetraAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juc
             shortDelayOutputRight[i] += diffusionFeedback[i + 4] * diffusionFeedbackAmount;
         }
 
-        // Process long delays with stronger modulation and bloom effect
+        // Process long delays
         for (int i = 0; i < 4; ++i)
         {
             modulationPhases[i + 4] += modulationFrequencies[i + 4] * modulationRateMultiplier / sampleRate;
@@ -337,13 +337,12 @@ void TriquetraAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juc
             longDelayOutputRight[i] = longDelayOutputRight[i] * longFeedback + shortDelayOutputRight[i] * (1.0f - longFeedback);
         }
 
-        // Apply all-pass filter with dramatic modulation for both short and long delays
+        // All-pass filter processing with exaggerated modulation for long delays
         std::array<float, 4> shortAllPassLeft, shortAllPassRight, longAllPassLeft, longAllPassRight;
         for (int i = 0; i < 4; ++i)
         {
-            float allPassModulation = std::sin(2.0f * juce::MathConstants<float>::pi * modulationPhases[i + 8]) * allPassModDepth;
-
             // Modulate all-pass filter coefficients
+            float allPassModulation = std::sin(2.0f * juce::MathConstants<float>::pi * modulationPhases[i + 8]) * allPassModDepth;
             float coefficientLeft = std::clamp(0.5f + allPassModulation, 0.01f, 0.99f);
             float coefficientRight = std::clamp(0.5f + allPassModulation, 0.01f, 0.99f);
 
@@ -362,7 +361,7 @@ void TriquetraAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juc
             longAllPassRight[i] = longAllPassFilters[i].process(longDelayOutputRight[i]);
         }
 
-        // Sum both the all-passed and non-all-passed signals for the final wet signal
+        // Final wet signal mix from all-passed and non-all-passed signals
         float wetSignalLeft = (shortAllPassLeft[0] + shortAllPassLeft[1] + shortAllPassLeft[2] + shortAllPassLeft[3]) * 0.25f
                             + (longAllPassLeft[0] + longAllPassLeft[1] + longAllPassLeft[2] + longAllPassLeft[3]) * 0.25f;
 
