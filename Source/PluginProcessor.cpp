@@ -280,6 +280,10 @@ void TriquetraAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juc
     const float fastBloomFactor = 1.8f;           // Faster modulation for blooming
     const float shortDelayModDepth = 0.003f;      // More noticeable depth for short delays
 
+    // LFO modulation frequency for all-pass filters
+    const float allPassModFrequency = 0.05f;  // Slow modulation rate for evolving effect
+    const float allPassModDepth = 0.3f;       // Depth of modulation for the all-pass filters
+
     for (int sample = 0; sample < buffer.getNumSamples(); ++sample)
     {
         float inputSampleLeft = buffer.getSample(0, sample);
@@ -339,13 +343,15 @@ void TriquetraAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juc
         // Apply independent all-pass filters to short delay outputs
         std::array<float, 4> allPassOutputLeft = { 0.0f, 0.0f, 0.0f, 0.0f };
         std::array<float, 4> allPassOutputRight = { 0.0f, 0.0f, 0.0f, 0.0f };
+
+        // Evolving modulation for all-pass filters
         for (int i = 0; i < 4; ++i)
         {
-            float amplitudeLeft = (std::abs(shortDelayOutputLeft[i]) * 0.25f);
-            float amplitudeRight = (std::abs(shortDelayOutputRight[i]) * 0.25f);
+            float lfoValueLeft = std::sin(2.0f * juce::MathConstants<float>::pi * allPassModFrequency * modulationPhases[i]);
+            float lfoValueRight = std::sin(2.0f * juce::MathConstants<float>::pi * allPassModFrequency * modulationPhases[i + 4]);
 
-            float coefficientLeft = std::clamp(0.2f + 0.6f * amplitudeRight, 0.01f, 0.99f);
-            float coefficientRight = std::clamp(0.2f + 0.6f * amplitudeLeft, 0.01f, 0.99f);
+            float coefficientLeft = 0.5f + allPassModDepth * lfoValueLeft;
+            float coefficientRight = 0.5f + allPassModDepth * lfoValueRight;
 
             allPassFilters[i].setCoefficient(coefficientLeft);
             allPassOutputLeft[i] = allPassFilters[i].process(shortDelayOutputLeft[i]);
@@ -387,7 +393,16 @@ void TriquetraAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juc
             longDelayOutputRight[i] = longDelayInputRight * (1.0f - longFeedback) + longDelayOutputRight[i] * feedbackGain;
 
             // Apply independent all-pass filters to the long delay outputs
+            float lfoValueLeft = std::sin(2.0f * juce::MathConstants<float>::pi * allPassModFrequency * modulationPhases[i + 4]);
+            float lfoValueRight = std::sin(2.0f * juce::MathConstants<float>::pi * allPassModFrequency * modulationPhases[i]);
+
+            float coefficientLeft = 0.5f + allPassModDepth * lfoValueLeft;
+            float coefficientRight = 0.5f + allPassModDepth * lfoValueRight;
+
+            longAllPassFilters[i].setCoefficient(coefficientLeft);
             longAllPassOutputLeft[i] = longAllPassFilters[i].process(longDelayOutputLeft[i]);
+
+            longAllPassFilters[i].setCoefficient(coefficientRight);
             longAllPassOutputRight[i] = longAllPassFilters[i].process(longDelayOutputRight[i]);
 
             // Mix the all-pass output and original long delay output
