@@ -268,12 +268,13 @@ void TriquetraAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juc
         buffer.clear(i, 0, buffer.getNumSamples());
 
     float sampleRate = static_cast<float>(getSampleRate());
-    const float stereoOffset = 0.02f * sampleRate; // 20ms stereo delay offset
+    const float stereoOffset = 0.01f * sampleRate; // Narrower stereo offset for tighter reflections
 
     // Feedback and diffusion parameters
-    const float diffusionIncrement = 0.02f; // Decrease the increment to avoid runaway feedback
-    const float maxDiffusion = 0.8f;        // Limit the max diffusion amount to reduce feedback distortion
-    const float feedbackLimit = 0.75f;      // Ensure feedback doesn't go beyond this point
+    const float earlyDiffusionIncrement = 0.07f; // Faster build-up of diffusion
+    const float maxEarlyDiffusion = 0.85f; // Limit to keep clarity
+    const float longDiffusionIncrement = 0.04f; // Slower bloom effect for long delays
+    const float maxLongDiffusion = 0.9f;
 
     for (int sample = 0; sample < buffer.getNumSamples(); ++sample)
     {
@@ -289,7 +290,7 @@ void TriquetraAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juc
         std::array<float, 4> shortDelayOutputLeft = { 0.0f, 0.0f, 0.0f, 0.0f };
         std::array<float, 4> shortDelayOutputRight = { 0.0f, 0.0f, 0.0f, 0.0f };
 
-        // Process short delays with modulation
+        // Process short delays - more irregularity from the start
         for (int i = 0; i < 4; ++i)
         {
             modulationPhases[i] += modulationFrequencies[i] / sampleRate;
@@ -298,9 +299,9 @@ void TriquetraAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juc
             float baseDelayLeft = shortDelayTimes[i] * sampleRate;
             float baseDelayRight = baseDelayLeft + stereoOffset;
 
-            // Adjust modulation depth slightly to avoid distortion
-            float modulationLeft = std::sin(2.0f * juce::MathConstants<float>::pi * modulationPhases[i]) * shortModulationDepth;
-            float modulationRight = std::sin(2.0f * juce::MathConstants<float>::pi * (modulationPhases[i] + 0.25f)) * shortModulationDepth;
+            // Larger modulation depth for more noticeable early variation
+            float modulationLeft = std::sin(2.0f * juce::MathConstants<float>::pi * modulationPhases[i]) * (shortModulationDepth * 2.0f);
+            float modulationRight = std::sin(2.0f * juce::MathConstants<float>::pi * (modulationPhases[i] + 0.25f)) * (shortModulationDepth * 2.0f);
 
             float modulatedDelayLeft = baseDelayLeft + (modulationLeft * baseDelayLeft);
             float modulatedDelayRight = baseDelayRight + (modulationRight * baseDelayRight);
@@ -308,11 +309,11 @@ void TriquetraAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juc
             shortDelayOutputLeft[i] = getInterpolatedSample(modulatedDelayLeft / sampleRate);
             shortDelayOutputRight[i] = getInterpolatedSample(modulatedDelayRight / sampleRate);
 
-            // Apply feedback and diffusion carefully
-            shortDelayOutputLeft[i] += diffusionFeedback[i] * diffusionFeedbackAmount;
-            shortDelayOutputRight[i] += diffusionFeedback[i + 4] * diffusionFeedbackAmount;
+            // Stronger feedback and early diffusion for reverb-like reflections
+            shortDelayOutputLeft[i] += diffusionFeedback[i] * (diffusionFeedbackAmount * 1.5f);
+            shortDelayOutputRight[i] += diffusionFeedback[i + 4] * (diffusionFeedbackAmount * 1.5f);
 
-            // Use the Hadamard matrix for diffusion spreading
+            // Hadamard transformation for diffusion
             float hadamardLeft = 0.0f, hadamardRight = 0.0f;
             for (int j = 0; j < 4; ++j)
             {
@@ -320,16 +321,19 @@ void TriquetraAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juc
                 hadamardRight += hadamardMatrix[i][j] * shortDelayOutputRight[j];
             }
 
-            // Lowpass filtering to control high-frequency build-up
+            // Lowpass filtering and feedback storage
             diffusionFeedback[i] = lowpassFilterLeft.processSample(hadamardLeft);
             diffusionFeedback[i + 4] = lowpassFilterRight.processSample(hadamardRight);
 
-            // Adjust the diffusion mix to avoid overwhelming early echoes
+            // More diffusion for early reflections
             shortDelayOutputLeft[i] = diffusionFeedback[i] * diffusionMix + processedInputLeft * (1.0f - diffusionMix);
             shortDelayOutputRight[i] = diffusionFeedback[i + 4] * diffusionMix + processedInputRight * (1.0f - diffusionMix);
+
+            // Increase early diffusion more quickly
+            diffusionMix = std::min(diffusionMix + earlyDiffusionIncrement, maxEarlyDiffusion);
         }
 
-        // Process long delays with cascading feedback
+        // Long delays with gradual bloom
         std::array<float, 4> longDelayOutputLeft = { 0.0f, 0.0f, 0.0f, 0.0f };
         std::array<float, 4> longDelayOutputRight = { 0.0f, 0.0f, 0.0f, 0.0f };
 
@@ -353,12 +357,12 @@ void TriquetraAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juc
             longDelayOutputLeft[i] = getInterpolatedSample(modulatedDelayLeft / sampleRate);
             longDelayOutputRight[i] = getInterpolatedSample(modulatedDelayRight / sampleRate);
 
-            // Apply feedback with gradual bloom, but limit the feedback to prevent distortion
-            longDelayOutputLeft[i] = juce::jlimit(-feedbackLimit, feedbackLimit, longDelayInputLeft * (1.0f - longFeedback) + longDelayOutputLeft[i] * longFeedback);
-            longDelayOutputRight[i] = juce::jlimit(-feedbackLimit, feedbackLimit, longDelayInputRight * (1.0f - longFeedback) + longDelayOutputRight[i] * longFeedback);
+            // Gradual bloom with feedback
+            longDelayOutputLeft[i] = longDelayInputLeft * (1.0f - longFeedback) + longDelayOutputLeft[i] * longFeedback;
+            longDelayOutputRight[i] = longDelayInputRight * (1.0f - longFeedback) + longDelayOutputRight[i] * longFeedback;
 
-            // Gradual diffusion and feedback build-up, but control to avoid excess feedback
-            diffusionMix = std::min(diffusionMix + diffusionIncrement, maxDiffusion);
+            // Increase long delay diffusion more slowly
+            diffusionMix = std::min(diffusionMix + longDiffusionIncrement, maxLongDiffusion);
         }
 
         // Final summing for cascading bloom effect
@@ -387,6 +391,7 @@ void TriquetraAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juc
         writePosition = (writePosition + 1) % delayBufferSize;
     }
 }
+
 
 
 // Compression function for managing peaks
