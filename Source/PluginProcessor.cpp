@@ -269,27 +269,19 @@ void TriquetraAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juc
         buffer.clear(i, 0, buffer.getNumSamples());
 
     float sampleRate = static_cast<float>(getSampleRate());
-    const float stereoOffset = 0.02f * sampleRate;  // Adjust stereo offset for clearer separation
+    const float stereoOffset = 0.02f * sampleRate;
 
-    const float earlyReflectionGain = 1.2f;  // Boost early reflection presence
-    const float feedbackGain = 0.6f;         // Slightly reduced feedback for smooth blooming
-    const float longDelayReverbMix = 0.6f;   // Increased reflection mix into long delays for better reverb effect
-    const float allPassMix = 0.4f;           // Reduced all-pass mix to prevent feedback loops
-
-    const float initialIrregularityFactor = 2.5f;  // Increased randomness factor for immediate irregularity
-    const float fastBloomFactor = 1.8f;           // Faster modulation for blooming
-    const float shortDelayModDepth = 0.003f;      // More noticeable depth for short delays
-
-    // LFO modulation frequency for all-pass filters
-    const float allPassModFrequency = 0.05f;  // Slow modulation rate for evolving effect
-    const float allPassModDepth = 0.3f;       // Depth of modulation for the all-pass filters
+    // Boosted irregularity and modulation settings
+    const float shortDelayModDepth = 0.003f;  // Increased modulation depth
+    const float longDelayModDepth = 0.1f;  // More pronounced depth for long delays
+    const float allPassModDepth = 0.5f;   // Modulation depth for all-pass filter evolution
+    const float modulationRateMultiplier = 2.0f; // Boost modulation rates for dramatic effect
 
     for (int sample = 0; sample < buffer.getNumSamples(); ++sample)
     {
         float inputSampleLeft = buffer.getSample(0, sample);
         float inputSampleRight = totalNumInputChannels > 1 ? buffer.getSample(1, sample) : inputSampleLeft;
 
-        // Apply input gain
         inputSampleLeft = applyGain(inputSampleLeft, inputGain);
         inputSampleRight = applyGain(inputSampleRight, inputGain);
 
@@ -298,138 +290,98 @@ void TriquetraAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juc
 
         std::array<float, 4> shortDelayOutputLeft = { 0.0f, 0.0f, 0.0f, 0.0f };
         std::array<float, 4> shortDelayOutputRight = { 0.0f, 0.0f, 0.0f, 0.0f };
+        std::array<float, 4> longDelayOutputLeft = { 0.0f, 0.0f, 0.0f, 0.0f };
+        std::array<float, 4> longDelayOutputRight = { 0.0f, 0.0f, 0.0f, 0.0f };
 
-        // Process short delays with immediate irregularity and subdivision
+        // Process short delays with more pronounced irregularity
         for (int i = 0; i < 4; ++i)
         {
-            modulationPhases[i] += (modulationFrequencies[i] * initialIrregularityFactor) / sampleRate;
+            modulationPhases[i] += (modulationFrequencies[i] * modulationRateMultiplier) / sampleRate;
             if (modulationPhases[i] >= 1.0f) modulationPhases[i] -= 1.0f;
 
             float baseDelayLeft = shortDelayTimes[i] * sampleRate;
             float baseDelayRight = baseDelayLeft + stereoOffset;
 
-            // Larger modulation for immediate irregularity in short delays
-            float modulationLeft = std::sin(2.0f * juce::MathConstants<float>::pi * modulationPhases[i]) * (shortDelayModDepth);
-            float modulationRight = std::sin(2.0f * juce::MathConstants<float>::pi * (modulationPhases[i] + 0.25f)) * (shortDelayModDepth);
+            float modulationLeft = std::sin(2.0f * juce::MathConstants<float>::pi * modulationPhases[i]) * shortDelayModDepth;
+            float modulationRight = std::sin(2.0f * juce::MathConstants<float>::pi * (modulationPhases[i] + 0.25f)) * shortDelayModDepth;
 
             float modulatedDelayLeft = baseDelayLeft + (modulationLeft * baseDelayLeft);
             float modulatedDelayRight = baseDelayRight + (modulationRight * baseDelayRight);
 
-            // Get interpolated samples
             shortDelayOutputLeft[i] = getInterpolatedSample(modulatedDelayLeft / sampleRate);
             shortDelayOutputRight[i] = getInterpolatedSample(modulatedDelayRight / sampleRate);
 
-            // Stronger feedback and early diffusion for more noticeable delays
-            shortDelayOutputLeft[i] += diffusionFeedback[i] * (diffusionFeedbackAmount * earlyReflectionGain);
-            shortDelayOutputRight[i] += diffusionFeedback[i + 4] * (diffusionFeedbackAmount * earlyReflectionGain);
-
-            // Hadamard transform for diffusion
-            float hadamardLeft = 0.0f, hadamardRight = 0.0f;
-            for (int j = 0; j < 4; ++j)
-            {
-                hadamardLeft += hadamardMatrix[i][j] * shortDelayOutputLeft[j];
-                hadamardRight += hadamardMatrix[i][j] * shortDelayOutputRight[j];
-            }
-
-            // Apply lowpass filtering and update feedback
-            diffusionFeedback[i] = lowpassFilterLeft.processSample(hadamardLeft);
-            diffusionFeedback[i + 4] = lowpassFilterRight.processSample(hadamardRight);
-
-            // More diffusion for short delays
-            shortDelayOutputLeft[i] = diffusionFeedback[i] * diffusionMix + processedInputLeft * (1.0f - diffusionMix);
-            shortDelayOutputRight[i] = diffusionFeedback[i + 4] * diffusionMix + processedInputRight * (1.0f - diffusionMix);
+            shortDelayOutputLeft[i] += diffusionFeedback[i] * diffusionFeedbackAmount;
+            shortDelayOutputRight[i] += diffusionFeedback[i + 4] * diffusionFeedbackAmount;
         }
 
-        // Apply independent all-pass filters to short delay outputs
-        std::array<float, 4> allPassOutputLeft = { 0.0f, 0.0f, 0.0f, 0.0f };
-        std::array<float, 4> allPassOutputRight = { 0.0f, 0.0f, 0.0f, 0.0f };
-
-        // Evolving modulation for all-pass filters
+        // Process long delays with stronger modulation and bloom effect
         for (int i = 0; i < 4; ++i)
         {
-            float lfoValueLeft = std::sin(2.0f * juce::MathConstants<float>::pi * allPassModFrequency * modulationPhases[i]);
-            float lfoValueRight = std::sin(2.0f * juce::MathConstants<float>::pi * allPassModFrequency * modulationPhases[i + 4]);
-
-            float coefficientLeft = 0.5f + allPassModDepth * lfoValueLeft;
-            float coefficientRight = 0.5f + allPassModDepth * lfoValueRight;
-
-            allPassFilters[i].setCoefficient(coefficientLeft);
-            allPassOutputLeft[i] = allPassFilters[i].process(shortDelayOutputLeft[i]);
-
-            allPassFilters[i].setCoefficient(coefficientRight);
-            allPassOutputRight[i] = allPassFilters[i].process(shortDelayOutputRight[i]);
-        }
-
-        // Process long delays with cascading bloom and more immediate irregularity
-        std::array<float, 4> longDelayOutputLeft = { 0.0f, 0.0f, 0.0f, 0.0f };
-        std::array<float, 4> longDelayOutputRight = { 0.0f, 0.0f, 0.0f, 0.0f };
-        std::array<float, 4> longAllPassOutputLeft = { 0.0f, 0.0f, 0.0f, 0.0f };
-        std::array<float, 4> longAllPassOutputRight = { 0.0f, 0.0f, 0.0f, 0.0f };
-
-        for (int i = 0; i < 4; ++i)
-        {
-            modulationPhases[i + 4] += modulationFrequencies[i + 4] / sampleRate;
+            modulationPhases[i + 4] += modulationFrequencies[i + 4] * modulationRateMultiplier / sampleRate;
             if (modulationPhases[i + 4] >= 1.0f) modulationPhases[i + 4] -= 1.0f;
 
             float baseDelayLeft = longDelayTimes[i] * sampleRate;
             float baseDelayRight = baseDelayLeft - stereoOffset;
 
-            // More pronounced modulation for long delays for faster blooming effect
-            float modulationLeft = std::sin(2.0f * juce::MathConstants<float>::pi * modulationPhases[i + 4]) * (longModulationDepth * fastBloomFactor);
-            float modulationRight = std::sin(2.0f * juce::MathConstants<float>::pi * (modulationPhases[i + 4] + 0.5f)) * (longModulationDepth * fastBloomFactor);
+            float modulationLeft = std::sin(2.0f * juce::MathConstants<float>::pi * modulationPhases[i + 4]) * longDelayModDepth;
+            float modulationRight = std::sin(2.0f * juce::MathConstants<float>::pi * (modulationPhases[i + 4] + 0.5f)) * longDelayModDepth;
 
             float modulatedDelayLeft = baseDelayLeft + (modulationLeft * baseDelayLeft);
             float modulatedDelayRight = baseDelayRight + (modulationRight * baseDelayRight);
 
-            // Input from short delay + feedback
-            float longDelayInputLeft = shortDelayOutputLeft[i] * (1.0f - diffusionToLongMix) + shortDelayOutputLeft[i] * longDelayReverbMix;
-            float longDelayInputRight = shortDelayOutputRight[i] * (1.0f - diffusionToLongMix) + shortDelayOutputRight[i] * longDelayReverbMix;
-
             longDelayOutputLeft[i] = getInterpolatedSample(modulatedDelayLeft / sampleRate);
             longDelayOutputRight[i] = getInterpolatedSample(modulatedDelayRight / sampleRate);
 
-            // Feedback with bloom effect
-            longDelayOutputLeft[i] = longDelayInputLeft * (1.0f - longFeedback) + longDelayOutputLeft[i] * feedbackGain;
-            longDelayOutputRight[i] = longDelayInputRight * (1.0f - longFeedback) + longDelayOutputRight[i] * feedbackGain;
-
-            // Apply independent all-pass filters to the long delay outputs
-            float lfoValueLeft = std::sin(2.0f * juce::MathConstants<float>::pi * allPassModFrequency * modulationPhases[i + 4]);
-            float lfoValueRight = std::sin(2.0f * juce::MathConstants<float>::pi * allPassModFrequency * modulationPhases[i]);
-
-            float coefficientLeft = 0.5f + allPassModDepth * lfoValueLeft;
-            float coefficientRight = 0.5f + allPassModDepth * lfoValueRight;
-
-            longAllPassFilters[i].setCoefficient(coefficientLeft);
-            longAllPassOutputLeft[i] = longAllPassFilters[i].process(longDelayOutputLeft[i]);
-
-            longAllPassFilters[i].setCoefficient(coefficientRight);
-            longAllPassOutputRight[i] = longAllPassFilters[i].process(longDelayOutputRight[i]);
-
-            // Mix the all-pass output and original long delay output
-            longDelayOutputLeft[i] = longDelayOutputLeft[i] * (1.0f - allPassMix) + longAllPassOutputLeft[i] * allPassMix;
-            longDelayOutputRight[i] = longDelayOutputRight[i] * (1.0f - allPassMix) + longAllPassOutputRight[i] * allPassMix;
+            longDelayOutputLeft[i] = longDelayOutputLeft[i] * longFeedback + shortDelayOutputLeft[i] * (1.0f - longFeedback);
+            longDelayOutputRight[i] = longDelayOutputRight[i] * longFeedback + shortDelayOutputRight[i] * (1.0f - longFeedback);
         }
 
-        // Final wet signal mix from short and long delay outputs
-        float wetSignalLeft = (allPassOutputLeft[0] + allPassOutputLeft[1] + allPassOutputLeft[2] + allPassOutputLeft[3]) * 0.25f
-                            + (longDelayOutputLeft[0] + longDelayOutputLeft[1] + longDelayOutputLeft[2] + longDelayOutputLeft[3]) * 0.25f;
+        // Apply all-pass filter with dramatic modulation for both short and long delays
+        std::array<float, 4> shortAllPassLeft, shortAllPassRight, longAllPassLeft, longAllPassRight;
+        for (int i = 0; i < 4; ++i)
+        {
+            float allPassModulation = std::sin(2.0f * juce::MathConstants<float>::pi * modulationPhases[i + 8]) * allPassModDepth;
 
-        float wetSignalRight = (allPassOutputRight[0] + allPassOutputRight[1] + allPassOutputRight[2] + allPassOutputRight[3]) * 0.25f
-                             + (longDelayOutputRight[0] + longDelayOutputRight[1] + longDelayOutputRight[2] + longDelayOutputRight[3]) * 0.25f;
+            // Modulate all-pass filter coefficients
+            float coefficientLeft = std::clamp(0.5f + allPassModulation, 0.01f, 0.99f);
+            float coefficientRight = std::clamp(0.5f + allPassModulation, 0.01f, 0.99f);
 
-        // Apply dry/wet mix and output gain
+            // Apply to short delays
+            allPassFilters[i].setCoefficient(coefficientLeft);
+            shortAllPassLeft[i] = allPassFilters[i].process(shortDelayOutputLeft[i]);
+
+            allPassFilters[i].setCoefficient(coefficientRight);
+            shortAllPassRight[i] = allPassFilters[i].process(shortDelayOutputRight[i]);
+
+            // Apply to long delays
+            longAllPassFilters[i].setCoefficient(coefficientLeft);
+            longAllPassLeft[i] = longAllPassFilters[i].process(longDelayOutputLeft[i]);
+
+            longAllPassFilters[i].setCoefficient(coefficientRight);
+            longAllPassRight[i] = longAllPassFilters[i].process(longDelayOutputRight[i]);
+        }
+
+        // Sum both the all-passed and non-all-passed signals for the final wet signal
+        float wetSignalLeft = (shortAllPassLeft[0] + shortAllPassLeft[1] + shortAllPassLeft[2] + shortAllPassLeft[3]) * 0.25f
+                            + (longAllPassLeft[0] + longAllPassLeft[1] + longAllPassLeft[2] + longAllPassLeft[3]) * 0.25f;
+
+        float wetSignalRight = (shortAllPassRight[0] + shortAllPassRight[1] + shortAllPassRight[2] + shortAllPassRight[3]) * 0.25f
+                             + (longAllPassRight[0] + longAllPassRight[1] + longAllPassRight[2] + longAllPassRight[3]) * 0.25f;
+
+        // Apply dry/wet mix
         float outputSampleLeft = inputSampleLeft * dryMix + wetSignalLeft * wetMix;
         float outputSampleRight = inputSampleRight * dryMix + wetSignalRight * wetMix;
 
-        // Soft clipping to prevent distortion
+        // Soft clipping and final gain
         outputSampleLeft = softClip(applyGain(outputSampleLeft, outputGain));
         outputSampleRight = softClip(applyGain(outputSampleRight, outputGain));
 
-        // Update feedback samples for next iteration
+        // Store for feedback
         lastOutputSampleLeft = outputSampleLeft;
         lastOutputSampleRight = outputSampleRight;
 
-        // Write final output to buffer
+        // Write to buffer
         buffer.setSample(0, sample, outputSampleLeft);
         buffer.setSample(1, sample, outputSampleRight);
 
