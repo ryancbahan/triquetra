@@ -32,7 +32,6 @@ public:
 
     const juce::String getName() const override;
     bool isBusesLayoutSupported (const BusesLayout& layouts) const;
-    std::array<juce::dsp::IIR::Filter<float>, 2> lowpassFilter;
     void initializeLowpassFilter();
     bool acceptsMidi() const override;
     bool producesMidi() const override;
@@ -63,6 +62,10 @@ private:
     std::array<float, 4> longDelayTimes;
     std::array<float, 4> modulatedShortDelayTimes;
     std::array<float, 4> modulatedLongDelayTimes;
+    
+    float getCubicInterpolatedSample(float delayTime);
+    std::array<AllPassFilter, 4> longAllPassFilters;
+
 
     float globalFeedback;
     float lastOutputSampleLeft;
@@ -72,13 +75,27 @@ private:
     float longModulationDepth;
     std::array<float, 8> modulationFrequencies;
     std::array<float, 8> modulationPhases;
+    float applyCompression(float sample, float threshold, float ratio);
+
 
     std::array<std::array<float, 4>, 4> hadamardMatrix;
-    std::array<juce::dsp::IIR::Filter<float>, 2> lowpassFilters;
+    juce::dsp::IIR::Filter<float> lowpassFilterLeft;
+    juce::dsp::IIR::Filter<float> lowpassFilterRight;
     std::array<AllPassFilter, 4> allPassFilters;
     
     std::array<float, 4> basedelayTimes;
     std::array<float, 4> modulatedDelayTimes;
+    void updateLowpassCoefficients();
+    
+    juce::dsp::IIR::Filter<float> allPassFilterLeft;
+      juce::dsp::IIR::Filter<float> allPassFilterRight;
+    
+    float lowpassFilterRate = 0.95f; // Controls how quickly the lowpass filter frequency decreases
+    std::array<float, 8> diffusionFeedback = {0}; // 4 for left, 4 for right
+    float diffusionFeedbackAmount = 0.6f; // Adjust this value to control the amount of diffusion feedback
+    float diffusionMix = 0.7f; // Adjust this to control the mix of diffused signal and input
+    float diffusionToLongMix = 0.3f; // Adjust this to control how much diffusion is fed into long delays
+    float longFeedback = 0.5f;
 
     float calculateAmplitude(const std::array<float, 4>& signal);
 
@@ -94,7 +111,7 @@ private:
     float generateLFOSample(int lfoIndex);
     void updateLFOs();
     void applyHadamardToLFOs(std::array<float, 4>& lfoOutputs);
-    
+    float removeDCOffset(float input, float& previousInput, float& previousOutput);
     std::array<float, 4> applyHadamardMixing(const std::array<float, 4>& inputs)
      {
          std::array<float, 4> outputs;
@@ -116,7 +133,8 @@ private:
     float shortDelayGain = 1.0f;
     float longDelayGain = 1.0f;
     float outputGain = 1.0f;
-    float dryMix = 0.7f;
+    float dryMix = 0.5f;
+    float wetMix = 0.5f;
     float shortDelayMix = 0.5f;
     float longDelayMix = 0.3f;
     std::array<float, 4> longModulationPhases = {0.0f, 0.0f, 0.0f, 0.0f};
