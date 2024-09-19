@@ -269,16 +269,16 @@ void TriquetraAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juc
         buffer.clear(i, 0, buffer.getNumSamples());
 
     float sampleRate = static_cast<float>(getSampleRate());
-    const float stereoOffset = 0.015f * sampleRate;  // Adjust stereo offset for clearer separation
+    const float stereoOffset = 0.02f * sampleRate;  // Adjust stereo offset for clearer separation
 
     const float earlyReflectionGain = 1.2f;  // Boost early reflection presence
-    const float feedbackGain = 0.6f;         // Reduce feedback slightly for smooth blooming
-    const float longDelayReverbMix = 0.5f;   // Increased reflection mix into long delays for better reverb effect
+    const float feedbackGain = 0.7f;         // Slightly reduced feedback for smooth blooming
+    const float longDelayReverbMix = 0.6f;   // Increased reflection mix into long delays for better reverb effect
 
-    const float irregularityFactor = 1.5f;   // Increase irregularity factor for more prominent subdivision
-    const float fasterBloomFactor = 1.3f;    // Slightly faster modulation for bloom effect
+    const float initialIrregularityFactor = 2.0f;  // Immediate randomness
+    const float fastBloomFactor = 1.5f;           // Faster modulation for blooming
 
-    const float shortDelayModDepth = 0.0015f;  // Increased depth for more prominent irregularities
+    const float shortDelayModDepth = 0.002f;  // More noticeable depth for short delays
 
     for (int sample = 0; sample < buffer.getNumSamples(); ++sample)
     {
@@ -295,16 +295,16 @@ void TriquetraAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juc
         std::array<float, 4> shortDelayOutputLeft = { 0.0f, 0.0f, 0.0f, 0.0f };
         std::array<float, 4> shortDelayOutputRight = { 0.0f, 0.0f, 0.0f, 0.0f };
 
-        // Process short delays with increased irregularity and subdivision evolution
+        // Process short delays with immediate irregularity and subdivision
         for (int i = 0; i < 4; ++i)
         {
-            modulationPhases[i] += (modulationFrequencies[i] * irregularityFactor) / sampleRate;
+            modulationPhases[i] += (modulationFrequencies[i] * initialIrregularityFactor) / sampleRate;
             if (modulationPhases[i] >= 1.0f) modulationPhases[i] -= 1.0f;
 
             float baseDelayLeft = shortDelayTimes[i] * sampleRate;
             float baseDelayRight = baseDelayLeft + stereoOffset;
 
-            // Larger modulation for increased irregularity in short delays
+            // Larger modulation for immediate irregularity in short delays
             float modulationLeft = std::sin(2.0f * juce::MathConstants<float>::pi * modulationPhases[i]) * (shortDelayModDepth);
             float modulationRight = std::sin(2.0f * juce::MathConstants<float>::pi * (modulationPhases[i] + 0.25f)) * (shortDelayModDepth);
 
@@ -315,11 +315,11 @@ void TriquetraAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juc
             shortDelayOutputLeft[i] = getInterpolatedSample(modulatedDelayLeft / sampleRate);
             shortDelayOutputRight[i] = getInterpolatedSample(modulatedDelayRight / sampleRate);
 
-            // Apply stronger feedback and early diffusion to make delays more noticeable
+            // Stronger feedback and early diffusion for more noticeable delays
             shortDelayOutputLeft[i] += diffusionFeedback[i] * (diffusionFeedbackAmount * earlyReflectionGain);
             shortDelayOutputRight[i] += diffusionFeedback[i + 4] * (diffusionFeedbackAmount * earlyReflectionGain);
 
-            // Apply Hadamard transform for diffusion
+            // Hadamard transform for diffusion
             float hadamardLeft = 0.0f, hadamardRight = 0.0f;
             for (int j = 0; j < 4; ++j)
             {
@@ -336,7 +336,7 @@ void TriquetraAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juc
             shortDelayOutputRight[i] = diffusionFeedback[i + 4] * diffusionMix + processedInputRight * (1.0f - diffusionMix);
         }
 
-        // Process long delays for bloom effect and smoother subdivision evolution
+        // Process long delays with cascading bloom and more immediate irregularity
         std::array<float, 4> longDelayOutputLeft = { 0.0f, 0.0f, 0.0f, 0.0f };
         std::array<float, 4> longDelayOutputRight = { 0.0f, 0.0f, 0.0f, 0.0f };
 
@@ -348,21 +348,21 @@ void TriquetraAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juc
             float baseDelayLeft = longDelayTimes[i] * sampleRate;
             float baseDelayRight = baseDelayLeft - stereoOffset;
 
-            // Blooming modulation for long delays with faster modulation
-            float modulationLeft = std::sin(2.0f * juce::MathConstants<float>::pi * modulationPhases[i + 4]) * (longModulationDepth * fasterBloomFactor);
-            float modulationRight = std::sin(2.0f * juce::MathConstants<float>::pi * (modulationPhases[i + 4] + 0.5f)) * (longModulationDepth * fasterBloomFactor);
+            // More pronounced modulation for long delays for faster blooming effect
+            float modulationLeft = std::sin(2.0f * juce::MathConstants<float>::pi * modulationPhases[i + 4]) * (longModulationDepth * fastBloomFactor);
+            float modulationRight = std::sin(2.0f * juce::MathConstants<float>::pi * (modulationPhases[i + 4] + 0.5f)) * (longModulationDepth * fastBloomFactor);
 
             float modulatedDelayLeft = baseDelayLeft + (modulationLeft * baseDelayLeft);
             float modulatedDelayRight = baseDelayRight + (modulationRight * baseDelayRight);
 
-            // Input from short delays and add feedback
+            // Input from short delay + feedback
             float longDelayInputLeft = shortDelayOutputLeft[i] * (1.0f - diffusionToLongMix) + shortDelayOutputLeft[i] * longDelayReverbMix;
             float longDelayInputRight = shortDelayOutputRight[i] * (1.0f - diffusionToLongMix) + shortDelayOutputRight[i] * longDelayReverbMix;
 
             longDelayOutputLeft[i] = getInterpolatedSample(modulatedDelayLeft / sampleRate);
             longDelayOutputRight[i] = getInterpolatedSample(modulatedDelayRight / sampleRate);
 
-            // Apply feedback with bloom effect
+            // Feedback with bloom effect
             longDelayOutputLeft[i] = longDelayInputLeft * (1.0f - longFeedback) + longDelayOutputLeft[i] * feedbackGain;
             longDelayOutputRight[i] = longDelayInputRight * (1.0f - longFeedback) + longDelayOutputRight[i] * feedbackGain;
         }
