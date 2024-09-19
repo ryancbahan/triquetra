@@ -290,13 +290,24 @@ void TriquetraAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juc
     const float feedbackIncreaseRate = 0.04f; // Increase feedback more gradually for sustain
     const float longSubdivisionsFactor = 1.75f; // Factor for subdividing long delays irregularly
 
+    // Variables for DC Offset Removal
+    float previousInputLeft = 0.0f, previousOutputLeft = 0.0f;
+    float previousInputRight = 0.0f, previousOutputRight = 0.0f;
+
     for (int sample = 0; sample < buffer.getNumSamples(); ++sample)
     {
         float inputSampleLeft = buffer.getSample(0, sample);
         float inputSampleRight = totalNumInputChannels > 1 ? buffer.getSample(1, sample) : inputSampleLeft;
 
-        inputSampleLeft = applyGain(inputSampleLeft, inputGain);
-        inputSampleRight = applyGain(inputSampleRight, inputGain);
+        // Apply DC offset removal only to the wet signal path, not the dry signal
+        float processedInputLeft = inputSampleLeft;
+        float processedInputRight = inputSampleRight;
+
+        processedInputLeft = applyGain(processedInputLeft, inputGain);
+        processedInputRight = applyGain(processedInputRight, inputGain);
+
+        processedInputLeft = removeDCOffset(processedInputLeft, previousInputLeft, previousOutputLeft);
+        processedInputRight = removeDCOffset(processedInputRight, previousInputRight, previousOutputRight);
 
         std::array<float, 4> shortDelayOutputLeft = { 0.0f, 0.0f, 0.0f, 0.0f };
         std::array<float, 4> shortDelayOutputRight = { 0.0f, 0.0f, 0.0f, 0.0f };
