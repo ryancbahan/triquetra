@@ -284,11 +284,11 @@ void TriquetraAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juc
     float sampleRate = static_cast<float>(getSampleRate());
     const float stereoOffset = 0.02f * sampleRate;
 
-    // Expanded long delays and subdivisions
-    const float bloomDelayModDepth = 0.1f;    // Increased depth for subdivisions
-    const float bloomFeedbackGain = 0.85f;    // Long sustain for the bloom effect
-    const float feedbackIncreaseRate = 0.03f; // Gradually increase feedback for longer sustain
-    const float longSubdivisionsFactor = 1.5f; // Factor for creating more subdivisions above and below original long delays
+    // Updated parameters for irregularity and long feedback
+    const float bloomDelayModDepth = 0.15f;   // More depth for subdividing delays
+    const float bloomFeedbackGain = 0.85f;    // Longer sustain for bloom effect
+    const float feedbackIncreaseRate = 0.04f; // Increase feedback more gradually for sustain
+    const float longSubdivisionsFactor = 1.75f; // Factor for subdividing long delays irregularly
 
     for (int sample = 0; sample < buffer.getNumSamples(); ++sample)
     {
@@ -298,15 +298,12 @@ void TriquetraAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juc
         inputSampleLeft = applyGain(inputSampleLeft, inputGain);
         inputSampleRight = applyGain(inputSampleRight, inputGain);
 
-        float processedInputLeft = inputSampleLeft + lastOutputSampleLeft * globalFeedback;
-        float processedInputRight = inputSampleRight + lastOutputSampleRight * globalFeedback;
-
         std::array<float, 4> shortDelayOutputLeft = { 0.0f, 0.0f, 0.0f, 0.0f };
         std::array<float, 4> shortDelayOutputRight = { 0.0f, 0.0f, 0.0f, 0.0f };
         std::array<float, 8> longDelayOutputLeft = { 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f }; // 8 taps for long delays
         std::array<float, 8> longDelayOutputRight = { 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f }; // 8 taps for long delays
 
-        // Process short delays and apply Hadamard matrix
+        // Process short delays
         for (int i = 0; i < 4; ++i)
         {
             modulationPhases[i] += (modulationFrequencies[i] * 2.0f) / sampleRate;
@@ -335,7 +332,7 @@ void TriquetraAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juc
             }
         }
 
-        // Process long delays with blooming effect and subdivisions
+        // Process long delays with bloom effect and subdivisions
         for (int i = 0; i < 4; ++i)
         {
             modulationPhases[i + 4] += modulationFrequencies[i + 4] * 2.0f / sampleRate;
@@ -353,7 +350,7 @@ void TriquetraAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juc
             longDelayOutputLeft[i] = getInterpolatedSample(modulatedDelayLeft / sampleRate);
             longDelayOutputRight[i] = getInterpolatedSample(modulatedDelayRight / sampleRate);
 
-            // Introduce smaller and larger subdivisions to bloom from long delays
+            // Introduce smaller and larger subdivisions for blooming effect
             float bloomLeftSmall = getInterpolatedSample((modulatedDelayLeft * longSubdivisionsFactor) / sampleRate);
             float bloomRightSmall = getInterpolatedSample((modulatedDelayRight * longSubdivisionsFactor) / sampleRate);
             
@@ -377,7 +374,7 @@ void TriquetraAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juc
             }
         }
 
-        // Calculate final wet signal from short and long delays
+        // Final wet signal from short and long delays
         float wetSignalLeft = (shortHadamardLeft[0] + shortHadamardLeft[1] + shortHadamardLeft[2] + shortHadamardLeft[3]) * 0.25f
                             + (longHadamardLeft[0] + longHadamardLeft[1] + longHadamardLeft[2] + longHadamardLeft[3]
                             + longHadamardLeft[4] + longHadamardLeft[5] + longHadamardLeft[6] + longHadamardLeft[7]) * 0.125f;
