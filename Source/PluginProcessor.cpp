@@ -284,14 +284,11 @@ void TriquetraAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juc
     float sampleRate = static_cast<float>(getSampleRate());
     const float stereoOffset = 0.02f * sampleRate;
 
-    // Feedback and bloom control
-    const float bloomDelayModDepth = 0.2f;  // Increased depth for more pronounced subdivisions
-    const float bloomFeedbackGain = 0.9f;   // Increase for more sustain
-    const float feedbackLimiterThreshold = 0.85f;
-    const float selfFeedback = 0.6f;  // Allowable self-feedback
-    const float lowpassFeedbackFreq = 4000.0f;  // Lower to emphasize reverb-like sound
-    const float energyThreshold = 0.9f; // Cap feedback energy at a dynamic threshold
-
+    // Expanded long delays and subdivisions
+    const float bloomDelayModDepth = 0.1f;    // Increased depth for subdivisions
+    const float bloomFeedbackGain = 0.85f;    // Long sustain for the bloom effect
+    const float feedbackIncreaseRate = 0.03f; // Gradually increase feedback for longer sustain
+    const float longSubdivisionsFactor = 1.5f; // Factor for creating more subdivisions above and below original long delays
 
     for (int sample = 0; sample < buffer.getNumSamples(); ++sample)
     {
@@ -306,8 +303,8 @@ void TriquetraAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juc
 
         std::array<float, 4> shortDelayOutputLeft = { 0.0f, 0.0f, 0.0f, 0.0f };
         std::array<float, 4> shortDelayOutputRight = { 0.0f, 0.0f, 0.0f, 0.0f };
-        std::array<float, 4> longDelayOutputLeft = { 0.0f, 0.0f, 0.0f, 0.0f };
-        std::array<float, 4> longDelayOutputRight = { 0.0f, 0.0f, 0.0f, 0.0f };
+        std::array<float, 8> longDelayOutputLeft = { 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f }; // 8 taps for long delays
+        std::array<float, 8> longDelayOutputRight = { 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f }; // 8 taps for long delays
 
         // Process short delays and apply Hadamard matrix
         for (int i = 0; i < 4; ++i)
@@ -338,7 +335,7 @@ void TriquetraAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juc
             }
         }
 
-        // Process long delays with bloom effect
+        // Process long delays with blooming effect and subdivisions
         for (int i = 0; i < 4; ++i)
         {
             modulationPhases[i + 4] += modulationFrequencies[i + 4] * 2.0f / sampleRate;
@@ -356,44 +353,38 @@ void TriquetraAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juc
             longDelayOutputLeft[i] = getInterpolatedSample(modulatedDelayLeft / sampleRate);
             longDelayOutputRight[i] = getInterpolatedSample(modulatedDelayRight / sampleRate);
 
-            // Introduce smaller subdivisions to bloom from long delays
-            float bloomLeft = getInterpolatedSample((modulatedDelayLeft + (modulatedDelayLeft * bloomDelayModDepth)) / sampleRate);
-            float bloomRight = getInterpolatedSample((modulatedDelayRight + (modulatedDelayRight * bloomDelayModDepth)) / sampleRate);
+            // Introduce smaller and larger subdivisions to bloom from long delays
+            float bloomLeftSmall = getInterpolatedSample((modulatedDelayLeft * longSubdivisionsFactor) / sampleRate);
+            float bloomRightSmall = getInterpolatedSample((modulatedDelayRight * longSubdivisionsFactor) / sampleRate);
+            
+            float bloomLeftLarge = getInterpolatedSample((modulatedDelayLeft / longSubdivisionsFactor) / sampleRate);
+            float bloomRightLarge = getInterpolatedSample((modulatedDelayRight / longSubdivisionsFactor) / sampleRate);
 
-            longDelayOutputLeft[i] += bloomLeft * bloomFeedbackGain;
-            longDelayOutputRight[i] += bloomRight * bloomFeedbackGain;
+            longDelayOutputLeft[i + 4] += bloomLeftSmall * bloomFeedbackGain + bloomLeftLarge * bloomFeedbackGain;
+            longDelayOutputRight[i + 4] += bloomRightSmall * bloomFeedbackGain + bloomRightLarge * bloomFeedbackGain;
         }
 
         // Apply Hadamard matrix to long delays
-        std::array<float, 4> longHadamardLeft, longHadamardRight;
-        for (int i = 0; i < 4; ++i)
+        std::array<float, 8> longHadamardLeft, longHadamardRight;
+        for (int i = 0; i < 8; ++i)
         {
             longHadamardLeft[i] = 0.0f;
             longHadamardRight[i] = 0.0f;
-            for (int j = 0; j < 4; ++j)
+            for (int j = 0; j < 8; ++j)
             {
-                longHadamardLeft[i] += hadamardMatrix[i][j] * longDelayOutputLeft[j];
-                longHadamardRight[i] += hadamardMatrix[i][j] * longDelayOutputRight[j];
+                longHadamardLeft[i] += hadamardMatrix[i % 4][j % 4] * longDelayOutputLeft[j];
+                longHadamardRight[i] += hadamardMatrix[i % 4][j % 4] * longDelayOutputRight[j];
             }
-        }
-
-        // Process diffusion on both short and long delays
-        for (int i = 0; i < 4; ++i)
-        {
-            // Apply lowpass filtering to the Hadamard processed outputs
-            shortHadamardLeft[i] = lowpassFilterLeft.processSample(shortHadamardLeft[i]);
-            shortHadamardRight[i] = lowpassFilterRight.processSample(shortHadamardRight[i]);
-
-            longHadamardLeft[i] = lowpassFilterLeft.processSample(longHadamardLeft[i]);
-            longHadamardRight[i] = lowpassFilterRight.processSample(longHadamardRight[i]);
-
         }
 
         // Calculate final wet signal from short and long delays
         float wetSignalLeft = (shortHadamardLeft[0] + shortHadamardLeft[1] + shortHadamardLeft[2] + shortHadamardLeft[3]) * 0.25f
-                            + (longHadamardLeft[0] + longHadamardLeft[1] + longHadamardLeft[2] + longHadamardLeft[3]) * 0.25f;
+                            + (longHadamardLeft[0] + longHadamardLeft[1] + longHadamardLeft[2] + longHadamardLeft[3]
+                            + longHadamardLeft[4] + longHadamardLeft[5] + longHadamardLeft[6] + longHadamardLeft[7]) * 0.125f;
+                            
         float wetSignalRight = (shortHadamardRight[0] + shortHadamardRight[1] + shortHadamardRight[2] + shortHadamardRight[3]) * 0.25f
-                             + (longHadamardRight[0] + longHadamardRight[1] + longHadamardRight[2] + longHadamardRight[3]) * 0.25f;
+                             + (longHadamardRight[0] + longHadamardRight[1] + longHadamardRight[2] + longHadamardRight[3]
+                             + longHadamardRight[4] + longHadamardRight[5] + longHadamardRight[6] + longHadamardRight[7]) * 0.125f;
 
         // Apply dry/wet mix and output gain
         float outputSampleLeft = inputSampleLeft * dryMix + wetSignalLeft * wetMix;
@@ -416,7 +407,6 @@ void TriquetraAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juc
         writePosition = (writePosition + 1) % delayBufferSize;
     }
 }
-
 
 
 float TriquetraAudioProcessor::removeDCOffset(float input, float& previousInput, float& previousOutput)
