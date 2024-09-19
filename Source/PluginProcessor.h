@@ -111,7 +111,7 @@ private:
     float generateLFOSample(int lfoIndex);
     void updateLFOs();
     void applyHadamardToLFOs(std::array<float, 4>& lfoOutputs);
-    
+    float removeDCOffset(float input, float& previousInput, float& previousOutput);
     std::array<float, 4> applyHadamardMixing(const std::array<float, 4>& inputs)
      {
          std::array<float, 4> outputs;
