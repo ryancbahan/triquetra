@@ -264,23 +264,27 @@ void TriquetraAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juc
 
     if (totalNumOutputChannels < 2) return;
 
+    // Clear output channels that are not used
     for (auto i = totalNumInputChannels; i < totalNumOutputChannels; ++i)
         buffer.clear(i, 0, buffer.getNumSamples());
 
     float sampleRate = static_cast<float>(getSampleRate());
-    const float stereoOffset = 0.01f * sampleRate; // Narrower stereo offset for tighter reflections
+    const float stereoOffset = 0.01f * sampleRate;  // Narrower stereo field for tighter reflections
 
-    // Feedback and diffusion parameters
-    const float earlyDiffusionIncrement = 0.07f; // Faster build-up of diffusion
-    const float maxEarlyDiffusion = 0.85f; // Limit to keep clarity
-    const float longDiffusionIncrement = 0.04f; // Slower bloom effect for long delays
-    const float maxLongDiffusion = 0.9f;
+    const float earlyReflectionGain = 1.0f;  // Boost early reflection volume
+    const float feedbackGain = 0.6f;         // Adjust feedback for smooth cascading effect
+    const float longDelayReverbMix = 0.4f;   // More reflection mix into long delays for reverb-like effect
+
+    const float initialIrregularity = 1.4f;  // Irregularity for short delays
+    const float bloomIrregularity = 1.2f;    // Blooming irregularity for longer delays
+    const float bloomFactor = 1.1f;          // Slight increase in modulation for blooming
 
     for (int sample = 0; sample < buffer.getNumSamples(); ++sample)
     {
         float inputSampleLeft = buffer.getSample(0, sample);
         float inputSampleRight = totalNumInputChannels > 1 ? buffer.getSample(1, sample) : inputSampleLeft;
 
+        // Apply input gain
         inputSampleLeft = applyGain(inputSampleLeft, inputGain);
         inputSampleRight = applyGain(inputSampleRight, inputGain);
 
@@ -290,30 +294,31 @@ void TriquetraAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juc
         std::array<float, 4> shortDelayOutputLeft = { 0.0f, 0.0f, 0.0f, 0.0f };
         std::array<float, 4> shortDelayOutputRight = { 0.0f, 0.0f, 0.0f, 0.0f };
 
-        // Process short delays - more irregularity from the start
+        // Process short delays with early irregularity and stronger reverb-like presence
         for (int i = 0; i < 4; ++i)
         {
-            modulationPhases[i] += modulationFrequencies[i] / sampleRate;
+            modulationPhases[i] += (modulationFrequencies[i] * initialIrregularity) / sampleRate;
             if (modulationPhases[i] >= 1.0f) modulationPhases[i] -= 1.0f;
 
             float baseDelayLeft = shortDelayTimes[i] * sampleRate;
             float baseDelayRight = baseDelayLeft + stereoOffset;
 
-            // Larger modulation depth for more noticeable early variation
-            float modulationLeft = std::sin(2.0f * juce::MathConstants<float>::pi * modulationPhases[i]) * (shortModulationDepth * 2.0f);
-            float modulationRight = std::sin(2.0f * juce::MathConstants<float>::pi * (modulationPhases[i] + 0.25f)) * (shortModulationDepth * 2.0f);
+            // Early irregularity and modulation for short delays
+            float modulationLeft = std::sin(2.0f * juce::MathConstants<float>::pi * modulationPhases[i]) * (shortModulationDepth * 1.5f);
+            float modulationRight = std::sin(2.0f * juce::MathConstants<float>::pi * (modulationPhases[i] + 0.25f)) * (shortModulationDepth * 1.5f);
 
             float modulatedDelayLeft = baseDelayLeft + (modulationLeft * baseDelayLeft);
             float modulatedDelayRight = baseDelayRight + (modulationRight * baseDelayRight);
 
+            // Get interpolated samples
             shortDelayOutputLeft[i] = getInterpolatedSample(modulatedDelayLeft / sampleRate);
             shortDelayOutputRight[i] = getInterpolatedSample(modulatedDelayRight / sampleRate);
 
-            // Stronger feedback and early diffusion for reverb-like reflections
-            shortDelayOutputLeft[i] += diffusionFeedback[i] * (diffusionFeedbackAmount * 1.5f);
-            shortDelayOutputRight[i] += diffusionFeedback[i + 4] * (diffusionFeedbackAmount * 1.5f);
+            // Apply more diffusion and stronger early reflections
+            shortDelayOutputLeft[i] += diffusionFeedback[i] * (diffusionFeedbackAmount * earlyReflectionGain);
+            shortDelayOutputRight[i] += diffusionFeedback[i + 4] * (diffusionFeedbackAmount * earlyReflectionGain);
 
-            // Hadamard transformation for diffusion
+            // Hadamard transform for better diffusion spreading
             float hadamardLeft = 0.0f, hadamardRight = 0.0f;
             for (int j = 0; j < 4; ++j)
             {
@@ -321,68 +326,66 @@ void TriquetraAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juc
                 hadamardRight += hadamardMatrix[i][j] * shortDelayOutputRight[j];
             }
 
-            // Lowpass filtering and feedback storage
+            // Apply lowpass filtering and update feedback
             diffusionFeedback[i] = lowpassFilterLeft.processSample(hadamardLeft);
             diffusionFeedback[i + 4] = lowpassFilterRight.processSample(hadamardRight);
 
-            // More diffusion for early reflections
+            // More diffusion for short delays
             shortDelayOutputLeft[i] = diffusionFeedback[i] * diffusionMix + processedInputLeft * (1.0f - diffusionMix);
             shortDelayOutputRight[i] = diffusionFeedback[i + 4] * diffusionMix + processedInputRight * (1.0f - diffusionMix);
-
-            // Increase early diffusion more quickly
-            diffusionMix = std::min(diffusionMix + earlyDiffusionIncrement, maxEarlyDiffusion);
         }
 
-        // Long delays with gradual bloom
+        // Process long delays for bloom effect and smooth reverb-like qualities
         std::array<float, 4> longDelayOutputLeft = { 0.0f, 0.0f, 0.0f, 0.0f };
         std::array<float, 4> longDelayOutputRight = { 0.0f, 0.0f, 0.0f, 0.0f };
 
         for (int i = 0; i < 4; ++i)
         {
-            modulationPhases[i + 4] += modulationFrequencies[i + 4] / sampleRate;
+            modulationPhases[i + 4] += (modulationFrequencies[i + 4] * bloomIrregularity) / sampleRate;
             if (modulationPhases[i + 4] >= 1.0f) modulationPhases[i + 4] -= 1.0f;
 
             float baseDelayLeft = longDelayTimes[i] * sampleRate;
             float baseDelayRight = baseDelayLeft - stereoOffset;
 
-            float modulationLeft = std::sin(2.0f * juce::MathConstants<float>::pi * modulationPhases[i + 4]) * longModulationDepth;
-            float modulationRight = std::sin(2.0f * juce::MathConstants<float>::pi * (modulationPhases[i + 4] + 0.5f)) * longModulationDepth;
+            // Blooming modulation for long delays
+            float modulationLeft = std::sin(2.0f * juce::MathConstants<float>::pi * modulationPhases[i + 4]) * (longModulationDepth * bloomFactor);
+            float modulationRight = std::sin(2.0f * juce::MathConstants<float>::pi * (modulationPhases[i + 4] + 0.5f)) * (longModulationDepth * bloomFactor);
 
             float modulatedDelayLeft = baseDelayLeft + (modulationLeft * baseDelayLeft);
             float modulatedDelayRight = baseDelayRight + (modulationRight * baseDelayRight);
 
-            float longDelayInputLeft = shortDelayOutputLeft[i] * (1.0f - diffusionToLongMix) + shortDelayOutputLeft[i] * diffusionToLongMix;
-            float longDelayInputRight = shortDelayOutputRight[i] * (1.0f - diffusionToLongMix) + shortDelayOutputRight[i] * diffusionToLongMix;
+            // Input from short delays and add feedback
+            float longDelayInputLeft = shortDelayOutputLeft[i] * (1.0f - diffusionToLongMix) + shortDelayOutputLeft[i] * longDelayReverbMix;
+            float longDelayInputRight = shortDelayOutputRight[i] * (1.0f - diffusionToLongMix) + shortDelayOutputRight[i] * longDelayReverbMix;
 
             longDelayOutputLeft[i] = getInterpolatedSample(modulatedDelayLeft / sampleRate);
             longDelayOutputRight[i] = getInterpolatedSample(modulatedDelayRight / sampleRate);
 
-            // Gradual bloom with feedback
-            longDelayOutputLeft[i] = longDelayInputLeft * (1.0f - longFeedback) + longDelayOutputLeft[i] * longFeedback;
-            longDelayOutputRight[i] = longDelayInputRight * (1.0f - longFeedback) + longDelayOutputRight[i] * longFeedback;
-
-            // Increase long delay diffusion more slowly
-            diffusionMix = std::min(diffusionMix + longDiffusionIncrement, maxLongDiffusion);
+            // Feedback with bloom effect
+            longDelayOutputLeft[i] = longDelayInputLeft * (1.0f - longFeedback) + longDelayOutputLeft[i] * feedbackGain;
+            longDelayOutputRight[i] = longDelayInputRight * (1.0f - longFeedback) + longDelayOutputRight[i] * feedbackGain;
         }
 
-        // Final summing for cascading bloom effect
+        // Mix the wet signal from both short and long delay outputs
         float wetSignalLeft = (shortDelayOutputLeft[0] + shortDelayOutputLeft[1] + shortDelayOutputLeft[2] + shortDelayOutputLeft[3]) * 0.25f
                             + (longDelayOutputLeft[0] + longDelayOutputLeft[1] + longDelayOutputLeft[2] + longDelayOutputLeft[3]) * 0.25f;
 
         float wetSignalRight = (shortDelayOutputRight[0] + shortDelayOutputRight[1] + shortDelayOutputRight[2] + shortDelayOutputRight[3]) * 0.25f
                              + (longDelayOutputRight[0] + longDelayOutputRight[1] + longDelayOutputRight[2] + longDelayOutputRight[3]) * 0.25f;
 
-        // Apply dry/wet mix
+        // Apply dry/wet mix and output gain
         float outputSampleLeft = inputSampleLeft * dryMix + wetSignalLeft * wetMix;
         float outputSampleRight = inputSampleRight * dryMix + wetSignalRight * wetMix;
 
-        // Soft clipping and final output gain
+        // Soft clipping and gain adjustment
         outputSampleLeft = softClip(applyGain(outputSampleLeft, outputGain));
         outputSampleRight = softClip(applyGain(outputSampleRight, outputGain));
 
+        // Store last output samples for feedback
         lastOutputSampleLeft = outputSampleLeft;
         lastOutputSampleRight = outputSampleRight;
 
+        // Write final output to buffer
         buffer.setSample(0, sample, outputSampleLeft);
         buffer.setSample(1, sample, outputSampleRight);
 
@@ -391,7 +394,6 @@ void TriquetraAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juc
         writePosition = (writePosition + 1) % delayBufferSize;
     }
 }
-
 
 
 // Compression function for managing peaks
