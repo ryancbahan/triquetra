@@ -310,10 +310,10 @@ void TriquetraAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juc
 
     // New parameters for reverb wash
     const float reverbWashFeedbackGain = 0.9f;
-    const float reverbWashLowpassFreq = 5000.0f;
+    const float reverbWashLowpassFreq = 500.0f;
     const float reverbWashModulationFreq = 0.1f;
-    const float reverbWashModulationDepth = 0.01f;
-    const float reverbWashMixAmount = 0.3f;
+    const float reverbWashModulationDepth = 0.1f;
+    const float reverbWashMixAmount = 0.9f;
 
     // Global feedback control
     const float globalFeedbackLimit = 0.95f;
