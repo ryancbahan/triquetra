@@ -229,7 +229,13 @@ void TriquetraAudioProcessor::prepareToPlay(double sampleRate, int samplesPerBlo
        spec.maximumBlockSize = samplesPerBlock;
        spec.numChannels = getTotalNumOutputChannels();
     
-    juce::dsp::IIR::Coefficients<float>::Ptr lowpassCoefficients = juce::dsp::IIR::Coefficients<float>::makeLowPass(sampleRate, 8000.0f);
+    juce::dsp::IIR::Coefficients<float>::Ptr lowpassCoefficients = juce::dsp::IIR::Coefficients<float>::makeLowPass(sampleRate, 5000.0f);
+    
+    reverbWashLowpassFilterLeft.coefficients = lowpassCoefficients;
+    reverbWashLowpassFilterRight.coefficients = lowpassCoefficients;
+
+    reverbWashLowpassFilterLeft.prepare(spec);
+    reverbWashLowpassFilterRight.prepare(spec);
       
       lowpassFilterLeft.coefficients = lowpassCoefficients;
       lowpassFilterRight.coefficients = lowpassCoefficients;
@@ -486,31 +492,42 @@ void TriquetraAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juc
         if (reverbWashPhase >= 1.0f) reverbWashPhase -= 1.0f;
         float reverbWashModulation = std::sin(2.0f * juce::MathConstants<float>::pi * reverbWashPhase) * reverbWashModulationDepth;
 
-        // Additional diffusion stages with self-feedback and extreme diffusion/comb filtering
+
+        // Additional diffusion stages with increased smearing, self-feedback, cross-modulation, and low-pass filtering
         for (int i = 0; i < 8; ++i)
         {
             // Input for the reverb wash: combining short and long Hadamard outputs
             float reverbInputLeft = (shortHadamardLeft[i % 4] + longHadamardLeft[i]);
             float reverbInputRight = (shortHadamardRight[i % 4] + longHadamardRight[i]);
 
-            // Apply self-feedback to enhance sustain and depth
-            reverbInputLeft += reverbWashLeft[i] * reverbWashFeedbackGain;  // Self-feedback
-            reverbInputRight += reverbWashRight[i] * reverbWashFeedbackGain; // Self-feedback
+            // Apply self-feedback for sustain and cross-channel feedback for stereo spread
+            float crossFeedbackLeft = reverbWashRight[i] * 0.3f;  // Cross-channel feedback
+            float crossFeedbackRight = reverbWashLeft[i] * 0.3f;  // Cross-channel feedback
+            reverbInputLeft += reverbWashLeft[i] * reverbWashFeedbackGain + crossFeedbackLeft;  // Self-feedback + cross-channel
+            reverbInputRight += reverbWashRight[i] * reverbWashFeedbackGain + crossFeedbackRight;
 
             // Diffuse the signal through all-pass filters (comb filtering effect)
             reverbWashLeft[i] = allPassFiltersLong[i % 4].processSample(reverbInputLeft);
             reverbWashRight[i] = allPassFiltersLong[i % 4].processSample(reverbInputRight);
 
-            // Apply additional diffusion (more stages of all-pass filtering)
-            for (int j = 0; j < 3; ++j)  // Introduce 3 more stages of diffusion for extreme comb filtering
+            // Increase smearing with multiple diffusion stages (all-pass filters)
+            for (int j = 0; j < 4; ++j)  // Introduce 4 additional diffusion stages for extreme smearing
             {
                 reverbWashLeft[i] = allPassFiltersShort[j % 4].processSample(reverbWashLeft[i]);
                 reverbWashRight[i] = allPassFiltersShort[j % 4].processSample(reverbWashRight[i]);
             }
 
+            // Apply cross-modulation for more stereo smearing
+            reverbWashLeft[i] += reverbWashRight[(i + 1) % 8] * 0.4f;  // Cross-modulate with the adjacent channel
+            reverbWashRight[i] += reverbWashLeft[(i + 1) % 8] * 0.4f;
+
             // Decay the wash for each step
             reverbWashLeft[i] *= reverbWashDecay;
             reverbWashRight[i] *= reverbWashDecay;
+
+            // Apply low-pass filter at 8kHz to control high-frequency buildup
+            reverbWashLeft[i] = reverbWashLowpassFilterLeft.processSample(reverbWashLeft[i]);
+            reverbWashRight[i] = reverbWashLowpassFilterRight.processSample(reverbWashRight[i]);
 
             // Apply JUCE's IIR high-pass filter to maintain clarity
             reverbWashLeft[i] = reverbWashHighpassFilterLeft.processSample(reverbWashLeft[i]);
@@ -521,13 +538,12 @@ void TriquetraAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juc
             reverbWashLeft[i] *= attenuation;
             reverbWashRight[i] *= attenuation;
 
-            // Apply self-feedback with diffusion to create extreme comb filtering
-            reverbWashLeft[i] += reverbWashLeft[i] * reverbWashFeedbackGain;  // Feed the processed signal back into the loop
-            reverbWashRight[i] += reverbWashRight[i] * reverbWashFeedbackGain;
+            // Additional self-feedback with increased smearing
+            reverbWashLeft[i] += reverbWashLeft[i] * reverbWashFeedbackGain * 0.8f;  // Additional feedback with reduced gain
+            reverbWashRight[i] += reverbWashRight[i] * reverbWashFeedbackGain * 0.8f;
         }
 
-
-
+        
         // Mix reverb wash back into main signal
         float reverbWashOutputLeft = 0.0f;
         float reverbWashOutputRight = 0.0f;
