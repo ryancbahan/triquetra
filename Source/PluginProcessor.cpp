@@ -238,7 +238,7 @@ void TriquetraAudioProcessor::prepareToPlay(double sampleRate, int samplesPerBlo
     bandPassFilterLeft.prepare(spec);
     bandPassFilterRight.prepare(spec);
     
-    juce::dsp::IIR::Coefficients<float>::Ptr lowpassCoefficients = juce::dsp::IIR::Coefficients<float>::makeLowPass(sampleRate, 8000.0f);
+    juce::dsp::IIR::Coefficients<float>::Ptr lowpassCoefficients = juce::dsp::IIR::Coefficients<float>::makeLowPass(sampleRate, 12000.0f);
     
     reverbWashLowpassFilterLeft.coefficients = lowpassCoefficients;
     reverbWashLowpassFilterRight.coefficients = lowpassCoefficients;
@@ -559,8 +559,8 @@ void TriquetraAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juc
             reverbWashRight[i] *= attenuation;
 
             // Additional self-feedback with increased smearing
-            reverbWashLeft[i] += reverbWashLeft[i] * reverbWashFeedbackGain * 0.8f;  // Additional feedback with reduced gain
-            reverbWashRight[i] += reverbWashRight[i] * reverbWashFeedbackGain * 0.8f;
+            reverbWashLeft[i] += reverbWashLeft[i] * reverbWashFeedbackGain;  // Additional feedback with reduced gain
+            reverbWashRight[i] += reverbWashRight[i] * reverbWashFeedbackGain;
         }
 
         
@@ -589,7 +589,7 @@ void TriquetraAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juc
             reverbWashRight[i] *= feedbackScaleFactor;
         }
         
-        // Drastically intermix long Hadamard and reverb wash outputs for extreme bloom and evolution
+        // Drastically intermix long Hadamard and reverb wash outputs with delayed cross-feedback for extended decay
         for (int i = 0; i < 8; ++i)
         {
             // Inputs for blending: long Hadamard output and reverb wash output
@@ -599,30 +599,36 @@ void TriquetraAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juc
             float reverbWashRightOutput = reverbWashRight[i];
 
             // Drastically blend the long Hadamard and reverb wash outputs
-            float blendedLeft = longHadamardLeftOutput * 0.7f + reverbWashLeftOutput * 0.7f;
-            float blendedRight = longHadamardRightOutput * 0.7f + reverbWashRightOutput * 0.7f;
+            float blendedLeft = longHadamardLeftOutput * 0.6f + reverbWashLeftOutput * 0.9f;
+            float blendedRight = longHadamardRightOutput * 0.6f + reverbWashRightOutput * 0.9f;
 
-            // Introduce strong cross-feedback for added depth and stereo spread
-            float crossFeedbackLeft = reverbWashRight[i] * 0.5f;  // More pronounced cross-feedback
-            float crossFeedbackRight = reverbWashLeft[i] * 0.5f;
+            // Introduce delayed cross-feedback for extended decay
+            static std::array<float, 8> crossFeedbackLeftBuffer = {0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f};
+            static std::array<float, 8> crossFeedbackRightBuffer = {0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f};
 
-            // Drastic modulation of the blended signal for intense dynamic evolution
-            blendedLeft += crossFeedbackLeft * (1.0f + std::sin(2.0f * juce::MathConstants<float>::pi * modulationPhases[i]) * bloomModulationAmount * 2.0f);
-            blendedRight += crossFeedbackRight * (1.0f + std::sin(2.0f * juce::MathConstants<float>::pi * modulationPhases[i]) * bloomModulationAmount * 2.0f);
+            float delayedCrossFeedbackLeft = crossFeedbackLeftBuffer[i] * 0.5f;  // Cross-feedback applied with delay
+            float delayedCrossFeedbackRight = crossFeedbackRightBuffer[i] * 0.5f;
+
+            // Store the current cross-feedback for use in future iterations
+            crossFeedbackLeftBuffer[i] = reverbWashRight[i] * 0.3f;  // Capture current reverb output for future feedback
+            crossFeedbackRightBuffer[i] = reverbWashLeft[i] * 0.3f;
+
+            // Add the delayed cross-feedback to the blended signal
+            blendedLeft += delayedCrossFeedbackLeft * (1.0f + std::sin(2.0f * juce::MathConstants<float>::pi * modulationPhases[i]) * bloomModulationAmount * 1.5f);
+            blendedRight += delayedCrossFeedbackRight * (1.0f + std::sin(2.0f * juce::MathConstants<float>::pi * modulationPhases[i]) * bloomModulationAmount * 1.5f);
 
             // Apply the blend back into the reverb wash and Hadamard paths with heavier feedback
-            reverbWashLeft[i] = blendedLeft * 0.8f + reverbWashLeft[i] * 0.2f;  // More blend into reverb wash
-            reverbWashRight[i] = blendedRight * 0.8f + reverbWashRight[i] * 0.2f;
+            reverbWashLeft[i] = blendedLeft * 0.7f + reverbWashLeft[i] * 0.3f;  // Gradual blending into reverb wash
+            reverbWashRight[i] = blendedRight * 0.7f + reverbWashRight[i] * 0.3f;
 
-            longHadamardLeft[i] = blendedLeft * 0.8f + longHadamardLeft[i] * 0.2f;  // More blend into Hadamard
-            longHadamardRight[i] = blendedRight * 0.8f + longHadamardRight[i] * 0.2f;
+            longHadamardLeft[i] = blendedLeft * 0.7f + longHadamardLeft[i] * 0.3f;  // Gradual blending into Hadamard
+            longHadamardRight[i] = blendedRight * 0.7f + longHadamardRight[i] * 0.3f;
 
             // Increment modulation phase for the next sample
             modulationPhases[i] += phaseIncrements[i];
             if (modulationPhases[i] >= 1.0f)
                 modulationPhases[i] -= 1.0f;
         }
-
 
 
         // Final wet signal
