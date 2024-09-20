@@ -303,10 +303,10 @@ void TriquetraAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juc
     const float longSubdivisionsFactor = 1.3f;
     const float modulationFeedbackAmount = 0.2f;
     const float crossFeedbackAmount = 0.1f;
-    const float attenuationFactor = 0.85f;
+    const float attenuationFactor = 0.65f;
     const float diffusionAmount = 0.7f;
-    const float bloomRegenerationGain = 0.4f;
-    const float bloomModulationAmount = 0.03f;
+    const float bloomRegenerationGain = 0.8f;
+    const float bloomModulationAmount = 0.5f;
 
     // New parameters for reverb wash
     const float reverbWashFeedbackGain = 0.9f;
@@ -422,21 +422,22 @@ void TriquetraAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juc
             longFeedbackLeft[i] = longDelayOutputLeft[i] * modulationFeedbackAmount;
             longFeedbackRight[i] = longDelayOutputRight[i] * modulationFeedbackAmount;
         }
-        
-        // Regenerative bloom: Introduce feedback from long delays back into short delays with modulation and gain
-        for (int i = 0; i < 4; ++i)
-        {
-            float regeneratedBloomLeft = longFeedbackLeft[i + 4] * bloomRegenerationGain * (1.0f + std::sin(juce::MathConstants<float>::twoPi * modulationPhases[i]) * bloomModulationAmount);
-            float regeneratedBloomRight = longFeedbackRight[i + 4] * bloomRegenerationGain * (1.0f + std::sin(juce::MathConstants<float>::twoPi * modulationPhases[i]) * bloomModulationAmount);
-
-            shortFeedbackLeft[i] += regeneratedBloomLeft;
-            shortFeedbackRight[i] += regeneratedBloomRight;
-        }
+    
 
         // Apply Hadamard matrix to long delays
         std::array<float, 8> longHadamardLeft = applyHadamardMixing(longDelayOutputLeft);
         std::array<float, 8> longHadamardRight = applyHadamardMixing(longDelayOutputRight);
+        
+        // Regenerative bloom: Introduce feedback from long delays back into short delays with modulation and gain
+        for (int i = 0; i < 4; ++i)
+        {
+            float regeneratedBloomLeft = longHadamardLeft[i + 4] * bloomRegenerationGain * (1.0f + std::sin(juce::MathConstants<float>::twoPi * modulationPhases[i]) * bloomModulationAmount);
+            float regeneratedBloomRight = longHadamardRight[i + 4] * bloomRegenerationGain * (1.0f + std::sin(juce::MathConstants<float>::twoPi * modulationPhases[i]) * bloomModulationAmount);
 
+            shortFeedbackLeft[i] += regeneratedBloomLeft;
+            shortFeedbackRight[i] += regeneratedBloomRight;
+        }
+        
         // Process reverb wash
         reverbWashPhase += reverbWashModulationFreq / sampleRate;
         if (reverbWashPhase >= 1.0f) reverbWashPhase -= 1.0f;
