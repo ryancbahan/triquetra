@@ -437,9 +437,9 @@ void TriquetraAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juc
             float combinedBloomRight = (longHadamardRight[i + 4] + reverbWashRight[i * 2] * 0.5f) * bloomRegenerationGain
                                        * (1.0f + std::sin(juce::MathConstants<float>::twoPi * modulationPhases[i]) * bloomModulationAmount);
 
-            // Apply low-pass filtering to remove frequencies below 150Hz in the regenerative bloom
-            combinedBloomLeft = lowpassFilter(combinedBloomLeft, 150.0f, sampleRate);
-            combinedBloomRight = lowpassFilter(combinedBloomRight, 150.0f, sampleRate);
+            // Apply high-pass filtering to allow only frequencies above 150Hz in the regenerative bloom
+            combinedBloomLeft = highpassFilter(combinedBloomLeft, 150.0f, sampleRate);
+            combinedBloomRight = highpassFilter(combinedBloomRight, 150.0f, sampleRate);
 
             // Feed the combined signal back into the short delays
             shortFeedbackLeft[i] += combinedBloomLeft;
@@ -574,6 +574,19 @@ float TriquetraAudioProcessor::lowpassFilter(float input, float cutoff, float sa
     lastOutput = output;
     return output;
 }
+
+float TriquetraAudioProcessor::highpassFilter(float input, float cutoff, float sampleRate)
+{
+    static float lastInput = 0.0f, lastOutput = 0.0f;
+    float alpha = 2.0f * juce::MathConstants<float>::pi * cutoff / sampleRate;
+    
+    float output = alpha * (lastOutput + input - lastInput);  // High-pass filter equation
+    lastInput = input;
+    lastOutput = output;
+    
+    return output;
+}
+
 
 inline float TriquetraAudioProcessor::clearDenormals(float value)
 {
