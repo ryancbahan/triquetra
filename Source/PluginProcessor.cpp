@@ -540,7 +540,7 @@ void TriquetraAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juc
 
         // Final wet signal
         // Uncomment below to include short/long delays in addition to the reverb wash
-        /*
+        
         float wetSignalLeft = (shortHadamardLeft[0] + shortHadamardLeft[1] + shortHadamardLeft[2] + shortHadamardLeft[3]) * 0.25f
                             + (longHadamardLeft[0] + longHadamardLeft[1] + longHadamardLeft[2] + longHadamardLeft[3]
                             + longHadamardLeft[4] + longHadamardLeft[5] + longHadamardLeft[6] + longHadamardLeft[7]) * 0.125f
@@ -549,11 +549,11 @@ void TriquetraAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juc
                                      + (longHadamardRight[0] + longHadamardRight[1] + longHadamardRight[2] + longHadamardRight[3]
                                      + longHadamardRight[4] + longHadamardRight[5] + longHadamardRight[6] + longHadamardRight[7]) * 0.125f
                                      + reverbWashOutputRight;
-        */
+        
 
-        // Isolate reverb wash for testing
-        float wetSignalLeft = reverbWashOutputLeft;
-        float wetSignalRight = reverbWashOutputRight;
+//        // Isolate reverb wash for testing
+//        float wetSignalLeft = reverbWashOutputLeft;
+//        float wetSignalRight = reverbWashOutputRight;
 
         // Apply dry/wet mix and output gain
         float outputSampleLeft = inputSampleLeft * dryMix + wetSignalLeft * wetMix;
