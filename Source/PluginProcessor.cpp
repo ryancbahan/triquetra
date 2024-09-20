@@ -314,7 +314,7 @@ void TriquetraAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juc
     const float bloomRegenerationGain = 0.8f;
     const float bloomModulationAmount = 0.5f;
 
-    const float reverbWashFeedbackGain = 0.9f;
+    const float reverbWashFeedbackGain = 0.5f;
     const float reverbWashLowpassFreq = 10000.0f;
     const float reverbWashModulationFreq = 0.1f;
     const float reverbWashModulationDepth = 0.1f;
@@ -486,32 +486,47 @@ void TriquetraAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juc
         if (reverbWashPhase >= 1.0f) reverbWashPhase -= 1.0f;
         float reverbWashModulation = std::sin(2.0f * juce::MathConstants<float>::pi * reverbWashPhase) * reverbWashModulationDepth;
 
-        // Additional diffusion stages
+        // Additional diffusion stages with self-feedback and extreme diffusion/comb filtering
         for (int i = 0; i < 8; ++i)
         {
+            // Input for the reverb wash: combining short and long Hadamard outputs
             float reverbInputLeft = (shortHadamardLeft[i % 4] + longHadamardLeft[i]);
             float reverbInputRight = (shortHadamardRight[i % 4] + longHadamardRight[i]);
 
+            // Apply self-feedback to enhance sustain and depth
+            reverbInputLeft += reverbWashLeft[i] * reverbWashFeedbackGain;  // Self-feedback
+            reverbInputRight += reverbWashRight[i] * reverbWashFeedbackGain; // Self-feedback
+
+            // Diffuse the signal through all-pass filters (comb filtering effect)
+            reverbWashLeft[i] = allPassFiltersLong[i % 4].processSample(reverbInputLeft);
+            reverbWashRight[i] = allPassFiltersLong[i % 4].processSample(reverbInputRight);
+
+            // Apply additional diffusion (more stages of all-pass filtering)
+            for (int j = 0; j < 3; ++j)  // Introduce 3 more stages of diffusion for extreme comb filtering
+            {
+                reverbWashLeft[i] = allPassFiltersShort[j % 4].processSample(reverbWashLeft[i]);
+                reverbWashRight[i] = allPassFiltersShort[j % 4].processSample(reverbWashRight[i]);
+            }
+
+            // Decay the wash for each step
             reverbWashLeft[i] *= reverbWashDecay;
             reverbWashRight[i] *= reverbWashDecay;
 
-            float feedbackLeft = reverbWashLeft[i] * reverbWashFeedbackGain;
-            float feedbackRight = reverbWashRight[i] * reverbWashFeedbackGain;
-
-            if (std::abs(feedbackLeft) < reverbWashThreshold) feedbackLeft = 0.0f;
-            if (std::abs(feedbackRight) < reverbWashThreshold) feedbackRight = 0.0f;
-
-            reverbWashLeft[i] = allPassFiltersLong[i % 4].processSample(reverbInputLeft + feedbackLeft);
-            reverbWashRight[i] = allPassFiltersLong[i % 4].processSample(reverbInputRight + feedbackRight);
-
-            // Apply JUCE's IIR high-pass filter
+            // Apply JUCE's IIR high-pass filter to maintain clarity
             reverbWashLeft[i] = reverbWashHighpassFilterLeft.processSample(reverbWashLeft[i]);
             reverbWashRight[i] = reverbWashHighpassFilterRight.processSample(reverbWashRight[i]);
 
+            // Attenuate higher frequencies more for a smoother result
             float attenuation = 1.0f / (1.0f + i * 0.1f);  // Higher frequencies attenuate faster
             reverbWashLeft[i] *= attenuation;
             reverbWashRight[i] *= attenuation;
+
+            // Apply self-feedback with diffusion to create extreme comb filtering
+            reverbWashLeft[i] += reverbWashLeft[i] * reverbWashFeedbackGain;  // Feed the processed signal back into the loop
+            reverbWashRight[i] += reverbWashRight[i] * reverbWashFeedbackGain;
         }
+
+
 
         // Mix reverb wash back into main signal
         float reverbWashOutputLeft = 0.0f;
@@ -541,19 +556,19 @@ void TriquetraAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juc
         // Final wet signal
         // Uncomment below to include short/long delays in addition to the reverb wash
         
-        float wetSignalLeft = (shortHadamardLeft[0] + shortHadamardLeft[1] + shortHadamardLeft[2] + shortHadamardLeft[3]) * 0.25f
-                            + (longHadamardLeft[0] + longHadamardLeft[1] + longHadamardLeft[2] + longHadamardLeft[3]
-                            + longHadamardLeft[4] + longHadamardLeft[5] + longHadamardLeft[6] + longHadamardLeft[7]) * 0.125f
-                            + reverbWashOutputLeft;
-        float wetSignalRight = (shortHadamardRight[0] + shortHadamardRight[1] + shortHadamardRight[2] + shortHadamardRight[3]) * 0.25f
-                                     + (longHadamardRight[0] + longHadamardRight[1] + longHadamardRight[2] + longHadamardRight[3]
-                                     + longHadamardRight[4] + longHadamardRight[5] + longHadamardRight[6] + longHadamardRight[7]) * 0.125f
-                                     + reverbWashOutputRight;
+//        float wetSignalLeft = (shortHadamardLeft[0] + shortHadamardLeft[1] + shortHadamardLeft[2] + shortHadamardLeft[3]) * 0.25f
+//                            + (longHadamardLeft[0] + longHadamardLeft[1] + longHadamardLeft[2] + longHadamardLeft[3]
+//                            + longHadamardLeft[4] + longHadamardLeft[5] + longHadamardLeft[6] + longHadamardLeft[7]) * 0.125f
+//                            + reverbWashOutputLeft;
+//        float wetSignalRight = (shortHadamardRight[0] + shortHadamardRight[1] + shortHadamardRight[2] + shortHadamardRight[3]) * 0.25f
+//                                     + (longHadamardRight[0] + longHadamardRight[1] + longHadamardRight[2] + longHadamardRight[3]
+//                                     + longHadamardRight[4] + longHadamardRight[5] + longHadamardRight[6] + longHadamardRight[7]) * 0.125f
+//                                     + reverbWashOutputRight;
         
 
-//        // Isolate reverb wash for testing
-//        float wetSignalLeft = reverbWashOutputLeft;
-//        float wetSignalRight = reverbWashOutputRight;
+        // Isolate reverb wash for testing
+        float wetSignalLeft = reverbWashOutputLeft;
+        float wetSignalRight = reverbWashOutputRight;
 
         // Apply dry/wet mix and output gain
         float outputSampleLeft = inputSampleLeft * dryMix + wetSignalLeft * wetMix;
