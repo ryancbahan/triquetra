@@ -588,6 +588,42 @@ void TriquetraAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juc
             reverbWashLeft[i] *= feedbackScaleFactor;
             reverbWashRight[i] *= feedbackScaleFactor;
         }
+        
+        // Drastically intermix long Hadamard and reverb wash outputs for extreme bloom and evolution
+        for (int i = 0; i < 8; ++i)
+        {
+            // Inputs for blending: long Hadamard output and reverb wash output
+            float longHadamardLeftOutput = longHadamardLeft[i];
+            float longHadamardRightOutput = longHadamardRight[i];
+            float reverbWashLeftOutput = reverbWashLeft[i];
+            float reverbWashRightOutput = reverbWashRight[i];
+
+            // Drastically blend the long Hadamard and reverb wash outputs
+            float blendedLeft = longHadamardLeftOutput * 0.7f + reverbWashLeftOutput * 0.7f;
+            float blendedRight = longHadamardRightOutput * 0.7f + reverbWashRightOutput * 0.7f;
+
+            // Introduce strong cross-feedback for added depth and stereo spread
+            float crossFeedbackLeft = reverbWashRight[i] * 0.5f;  // More pronounced cross-feedback
+            float crossFeedbackRight = reverbWashLeft[i] * 0.5f;
+
+            // Drastic modulation of the blended signal for intense dynamic evolution
+            blendedLeft += crossFeedbackLeft * (1.0f + std::sin(2.0f * juce::MathConstants<float>::pi * modulationPhases[i]) * bloomModulationAmount * 2.0f);
+            blendedRight += crossFeedbackRight * (1.0f + std::sin(2.0f * juce::MathConstants<float>::pi * modulationPhases[i]) * bloomModulationAmount * 2.0f);
+
+            // Apply the blend back into the reverb wash and Hadamard paths with heavier feedback
+            reverbWashLeft[i] = blendedLeft * 0.8f + reverbWashLeft[i] * 0.2f;  // More blend into reverb wash
+            reverbWashRight[i] = blendedRight * 0.8f + reverbWashRight[i] * 0.2f;
+
+            longHadamardLeft[i] = blendedLeft * 0.8f + longHadamardLeft[i] * 0.2f;  // More blend into Hadamard
+            longHadamardRight[i] = blendedRight * 0.8f + longHadamardRight[i] * 0.2f;
+
+            // Increment modulation phase for the next sample
+            modulationPhases[i] += phaseIncrements[i];
+            if (modulationPhases[i] >= 1.0f)
+                modulationPhases[i] -= 1.0f;
+        }
+
+
 
         // Final wet signal
         // Uncomment below to include short/long delays in addition to the reverb wash
