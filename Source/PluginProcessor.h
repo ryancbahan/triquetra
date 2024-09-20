@@ -57,7 +57,7 @@ private:
     std::vector<float> delayBuffer;
     int delayBufferSize;
     int writePosition;
-
+    float lowpassFilter(float input, float cutoff, float sampleRate);
     std::array<float, 4> shortDelayTimes;
     std::array<float, 4> longDelayTimes;
     std::array<float, 4> modulatedShortDelayTimes;
@@ -116,19 +116,24 @@ private:
     void updateLFOs();
     void applyHadamardToLFOs(std::array<float, 4>& lfoOutputs);
     float removeDCOffset(float input, float& previousInput, float& previousOutput);
-    std::array<float, 4> applyHadamardMixing(const std::array<float, 4>& inputs)
-     {
-         std::array<float, 4> outputs;
-         for (int i = 0; i < 4; ++i)
-         {
-             outputs[i] = 0.0f;
-             for (int j = 0; j < 4; ++j)
-             {
-                 outputs[i] += hadamardMatrix[i][j] * inputs[j];
-             }
-         }
-         return outputs;
-     }
+    template<size_t N>
+    std::array<float, N> applyHadamardMixing(const std::array<float, N>& inputs)
+    {
+        std::array<float, N> outputs;
+        for (size_t i = 0; i < N; ++i)
+        {
+            outputs[i] = 0.0f;
+            for (size_t j = 0; j < N; ++j)
+            {
+                outputs[i] += hadamardMatrix[i % 4][j % 4] * inputs[j];
+            }
+        }
+        return outputs;
+    }
+    
+    float reverbWashDucking = 0.0f;  // Amount of ducking (0.0 to 1.0)
+    float reverbWashDecay = 0.99f;   // Adjustable decay factor
+    float reverbWashThreshold = 0.01f; 
     
     float softClip(float sample);
     float applyGain(float sample, float gainFactor);
