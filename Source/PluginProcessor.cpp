@@ -422,6 +422,16 @@ void TriquetraAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juc
             longFeedbackLeft[i] = longDelayOutputLeft[i] * modulationFeedbackAmount;
             longFeedbackRight[i] = longDelayOutputRight[i] * modulationFeedbackAmount;
         }
+        
+        // Regenerative bloom: Introduce feedback from long delays back into short delays with modulation and gain
+        for (int i = 0; i < 4; ++i)
+        {
+            float regeneratedBloomLeft = longFeedbackLeft[i + 4] * bloomRegenerationGain * (1.0f + std::sin(juce::MathConstants<float>::twoPi * modulationPhases[i]) * bloomModulationAmount);
+            float regeneratedBloomRight = longFeedbackRight[i + 4] * bloomRegenerationGain * (1.0f + std::sin(juce::MathConstants<float>::twoPi * modulationPhases[i]) * bloomModulationAmount);
+
+            shortFeedbackLeft[i] += regeneratedBloomLeft;
+            shortFeedbackRight[i] += regeneratedBloomRight;
+        }
 
         // Apply Hadamard matrix to long delays
         std::array<float, 8> longHadamardLeft = applyHadamardMixing(longDelayOutputLeft);
