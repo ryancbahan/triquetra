@@ -152,6 +152,11 @@ private:
     juce::dsp::IIR::Filter<float> reverbWashHighpassFilterRight;
     juce::dsp::IIR::Filter<float> reverbWashLowpassFilterLeft;
     juce::dsp::IIR::Filter<float> reverbWashLowpassFilterRight;
+    
+    // Band-pass filters for midrange emphasis
+    juce::dsp::IIR::Filter<float> bandPassFilterLeft;
+    juce::dsp::IIR::Filter<float> bandPassFilterRight;
+
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (TriquetraAudioProcessor)
 };
