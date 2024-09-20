@@ -428,14 +428,27 @@ void TriquetraAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juc
         std::array<float, 8> longHadamardLeft = applyHadamardMixing(longDelayOutputLeft);
         std::array<float, 8> longHadamardRight = applyHadamardMixing(longDelayOutputRight);
         
-        // Regenerative bloom: Introduce feedback from long delays back into short delays with modulation and gain
+        // Regenerative bloom: Introduce feedback from long delays and reverb wash back into short delays with modulation and gain
         for (int i = 0; i < 4; ++i)
         {
-            float regeneratedBloomLeft = longHadamardLeft[i + 4] * bloomRegenerationGain * (1.0f + std::sin(juce::MathConstants<float>::twoPi * modulationPhases[i]) * bloomModulationAmount);
-            float regeneratedBloomRight = longHadamardRight[i + 4] * bloomRegenerationGain * (1.0f + std::sin(juce::MathConstants<float>::twoPi * modulationPhases[i]) * bloomModulationAmount);
+            // Mix the long delay with the reverb wash
+            float combinedBloomLeft = (longHadamardLeft[i + 4] + reverbWashLeft[i * 2] * 0.5f) * bloomRegenerationGain
+                                      * (1.0f + std::sin(juce::MathConstants<float>::twoPi * modulationPhases[i]) * bloomModulationAmount);
+            float combinedBloomRight = (longHadamardRight[i + 4] + reverbWashRight[i * 2] * 0.5f) * bloomRegenerationGain
+                                       * (1.0f + std::sin(juce::MathConstants<float>::twoPi * modulationPhases[i]) * bloomModulationAmount);
 
-            shortFeedbackLeft[i] += regeneratedBloomLeft;
-            shortFeedbackRight[i] += regeneratedBloomRight;
+            // Apply low-pass filtering to remove frequencies below 150Hz in the regenerative bloom
+            combinedBloomLeft = lowpassFilter(combinedBloomLeft, 150.0f, sampleRate);
+            combinedBloomRight = lowpassFilter(combinedBloomRight, 150.0f, sampleRate);
+
+            // Feed the combined signal back into the short delays
+            shortFeedbackLeft[i] += combinedBloomLeft;
+            shortFeedbackRight[i] += combinedBloomRight;
+
+            // Optionally, further modulate the reverb wash for evolving textures
+            modulationPhases[i] += phaseIncrements[i];
+            if (modulationPhases[i] >= 1.0f)
+                modulationPhases[i] -= 1.0f;
         }
         
         // Process reverb wash

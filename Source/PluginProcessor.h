@@ -137,7 +137,7 @@ private:
     
     float softClip(float sample);
     float applyGain(float sample, float gainFactor);
-    
+    float highpassFilter(float input, float cutoff, float sampleRate);
     float inputGain = 1.0f;
     float shortDelayGain = 1.0f;
     float longDelayGain = 1.0f;
