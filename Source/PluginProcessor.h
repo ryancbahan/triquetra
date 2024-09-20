@@ -147,7 +147,9 @@ private:
     float shortDelayMix = 0.5f;
     float longDelayMix = 0.3f;
     std::array<float, 4> longModulationPhases = {0.0f, 0.0f, 0.0f, 0.0f};
-
+    float currentFeedbackLevel = 0.0f;
+    juce::dsp::IIR::Filter<float> reverbWashHighpassFilterLeft;
+    juce::dsp::IIR::Filter<float> reverbWashHighpassFilterRight;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (TriquetraAudioProcessor)
 };
