@@ -253,7 +253,7 @@ void TriquetraAudioProcessor::prepareToPlay(double sampleRate, int samplesPerBlo
     // Reset processors (e.g., filters and delay lines)
     reverbProcessor.prepare(sampleRate, samplesPerBlock);
     shortDelayProcessor.prepare(sampleRate, getTotalNumOutputChannels(), feedback, diffusionAmount, modulationFeedbackAmount);
-    longDelayProcessor.prepare(sampleRate, getTotalNumOutputChannels(), feedback, bloomFeedbackGain, modulationFeedbackAmount, attenuationFactor, longSubdivisionsFactor);
+    longDelayProcessor.prepare(sampleRate, getTotalNumOutputChannels(), feedback, bloomFeedbackGain, modulationFeedbackAmount, attenuationFactor, longSubdivisionsFactor, 0.9);
 
     // Reset filters
     lowpassFilterLeft.reset();

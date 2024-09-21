@@ -15,7 +15,7 @@ LongDelayProcessor::LongDelayProcessor()
     }
 }
 
-void LongDelayProcessor::prepare(double newSampleRate, int numChannels, float newFeedback, float newBloomFeedbackGain, float newModulationFeedbackAmount, float newAttenuationFactor, float newLongSubdivisionsFactor)
+void LongDelayProcessor::prepare(double newSampleRate, int numChannels, float newFeedback, float newBloomFeedbackGain, float newModulationFeedbackAmount, float newAttenuationFactor, float newLongSubdivisionsFactor, float newDecayRate)
 {
     sampleRate = newSampleRate;
     feedback = newFeedback;
@@ -23,6 +23,7 @@ void LongDelayProcessor::prepare(double newSampleRate, int numChannels, float ne
     modulationFeedbackAmount = newModulationFeedbackAmount;
     attenuationFactor = newAttenuationFactor;
     longSubdivisionsFactor = newLongSubdivisionsFactor;
+    decayRate = newDecayRate;
 
     juce::dsp::ProcessSpec spec{ sampleRate, static_cast<juce::uint32>(512), static_cast<juce::uint32>(numChannels) };
 
@@ -104,6 +105,13 @@ void LongDelayProcessor::process(const std::array<float, 4>& longDelayTimes,
         float irregularSampleLeft = getInterpolatedSample(delayBufferLeft[i], cumulativeIrregularDelayLeft);
         float irregularSampleRight = getInterpolatedSample(delayBufferRight[i], cumulativeIrregularDelayRight);
 
+        // Apply decay to both original and irregular delays
+        float decayFactor = std::pow(decayRate, static_cast<float>(i));
+        longHadamardLeft[i] *= decayFactor;
+        longHadamardRight[i] *= decayFactor;
+        irregularSampleLeft *= decayFactor;
+        irregularSampleRight *= decayFactor;
+
         // Mix irregular delays into Hadamard arrays
         longHadamardLeft[i + 4] = irregularSampleLeft * bloomFeedbackGain;
         longHadamardRight[i + 4] = irregularSampleRight * bloomFeedbackGain;
@@ -142,7 +150,7 @@ void LongDelayProcessor::process(const std::array<float, 4>& longDelayTimes,
 float LongDelayProcessor::getInterpolatedSample(const std::vector<float>& buffer, float delayInSamples)
 {
     int readPosition = (writePosition - static_cast<int>(delayInSamples) + delayBufferSize) % delayBufferSize;
-    float fraction = delayInSamples - static_cast<int>(delayInSamples);
+    float fraction = delayInSamples - static_cast<float>(static_cast<int>(delayInSamples));
 
     int nextPosition = (readPosition + 1) % delayBufferSize;
 

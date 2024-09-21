@@ -7,7 +7,7 @@ class LongDelayProcessor
 {
 public:
     LongDelayProcessor();
-    void prepare(double newSampleRate, int numChannels, float newFeedback, float newBloomFeedbackGain, float newModulationFeedbackAmount, float newAttenuationFactor, float newLongSubdivisionsFactor);
+    void prepare(double newSampleRate, int numChannels, float newFeedback, float newBloomFeedbackGain, float newModulationFeedbackAmount, float newAttenuationFactor, float newLongSubdivisionsFactor, float newDecayRate);
     
     void process(const std::array<float, 4>& longDelayTimes,
                  std::array<float, 8>& longFeedbackLeft,
@@ -22,7 +22,7 @@ private:
     double sampleRate = 44100.0;
     int delayBufferSize = 0;
     int writePosition = 0;
-
+    float decayRate;
     float feedback = 0.5f;
     float bloomFeedbackGain = 0.75f;
     float modulationFeedbackAmount = 0.2f;
