@@ -43,13 +43,18 @@ void ReverbProcessor::prepare(double sampleRate, int samplesPerBlock)
         filter.reset();
     lowpassFilter.reset();
     highpassFilter.reset();
+
+    // Initialize reverbWash arrays
+    reverbWashLeft.fill(0.0f);
+    reverbWashRight.fill(0.0f);
 }
 
 void ReverbProcessor::process(const std::array<float, 4>& shortHadamardLeft,
                               const std::array<float, 4>& shortHadamardRight,
                               const std::array<float, 8>& longHadamardLeft,
                               const std::array<float, 8>& longHadamardRight,
-                              float& outLeft, float& outRight)
+                              std::array<float, 8>& outLeft,
+                              std::array<float, 8>& outRight)
 {
     updateModulation();
 
@@ -93,25 +98,18 @@ void ReverbProcessor::process(const std::array<float, 4>& shortHadamardLeft,
         // Final high-pass and low-pass filtering
         reverbWashLeft[i] = highpassFilter.processSample(lowpassFilter.processSample(reverbWashLeft[i]));
         reverbWashRight[i] = highpassFilter.processSample(lowpassFilter.processSample(reverbWashRight[i]));
-    }
 
-    outLeft = 0.0f;
-    outRight = 0.0f;
-    
-    // Sum the reverb wash signals for final output
-    for (int i = 0; i < 8; ++i)
-    {
-        outLeft += reverbWashLeft[i];
-        outRight += reverbWashRight[i];
+        // Store the processed samples directly in the output arrays
+        outLeft[i] = std::clamp(reverbWashLeft[i], -1.0f, 1.0f);
+        outRight[i] = std::clamp(reverbWashRight[i], -1.0f, 1.0f);
     }
 
     // Optional normalization (uncomment if needed)
-//    outLeft *= 0.125f;
-//    outRight *= 0.125f;
-
-    // Final safety clipping
-    outLeft = std::clamp(outLeft, -1.0f, 1.0f);
-    outRight = std::clamp(outRight, -1.0f, 1.0f);
+    // for (int i = 0; i < 8; ++i)
+    // {
+    //     outLeft[i] *= 0.125f;
+    //     outRight[i] *= 0.125f;
+    // }
 }
 
 void ReverbProcessor::updateModulation()
@@ -120,4 +118,3 @@ void ReverbProcessor::updateModulation()
     if (reverbWashPhase >= 1.0f) reverbWashPhase -= 1.0f;
     reverbWashModulation = std::sin(2.0f * juce::MathConstants<float>::pi * reverbWashPhase) * reverbWashModulationDepth;
 }
-
