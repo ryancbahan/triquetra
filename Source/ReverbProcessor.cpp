@@ -26,7 +26,7 @@ void ReverbProcessor::prepare(double sampleRate, int samplesPerBlock)
     }
 
     // Set up filter coefficients with steeper slopes
-    auto lowCoefficients = juce::dsp::IIR::Coefficients<float>::makeLowPass(sampleRate, 3000.0f, 0.7071f);
+    auto lowCoefficients = juce::dsp::IIR::Coefficients<float>::makeLowPass(sampleRate, 1000.0f);
     auto highCoefficients = juce::dsp::IIR::Coefficients<float>::makeHighPass(sampleRate, 40.0f, 0.7071f);
     
     // Prepare steep lowpass and highpass filters

@@ -485,24 +485,24 @@ void TriquetraAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juc
         }
 
         // Regenerative bloom: Introduce feedback from long delays and reverb wash back into short delays with modulation and gain
-        for (int i = 0; i < 4; ++i)
-        {
-            float combinedBloomLeft = (longHadamardLeft[i + 4]) * bloomRegenerationGain
-                                      * (1.0f + std::sin(juce::MathConstants<float>::twoPi * modulationPhases[i]) * bloomModulationAmount);
-            float combinedBloomRight = (longHadamardRight[i + 4]) * bloomRegenerationGain
-                                       * (1.0f + std::sin(juce::MathConstants<float>::twoPi * modulationPhases[i]) * bloomModulationAmount);
-
-            combinedBloomLeft = highpassFilter(combinedBloomLeft, 150.0f, sampleRate);
-            combinedBloomRight = highpassFilter(combinedBloomRight, 150.0f, sampleRate);
-
-            // Feed the combined signal back into the short delays
-            shortFeedbackLeft[i] += combinedBloomLeft;
-            shortFeedbackRight[i] += combinedBloomRight;
-
-            modulationPhases[i] += phaseIncrements[i];
-            if (modulationPhases[i] >= 1.0f)
-                modulationPhases[i] -= 1.0f;
-        }
+//        for (int i = 0; i < 4; ++i)
+//        {
+//            float combinedBloomLeft = (longHadamardLeft[i + 4]) * bloomRegenerationGain
+//                                      * (1.0f + std::sin(juce::MathConstants<float>::twoPi * modulationPhases[i]) * bloomModulationAmount);
+//            float combinedBloomRight = (longHadamardRight[i + 4]) * bloomRegenerationGain
+//                                       * (1.0f + std::sin(juce::MathConstants<float>::twoPi * modulationPhases[i]) * bloomModulationAmount);
+//
+//            combinedBloomLeft = highpassFilter(combinedBloomLeft, 150.0f, sampleRate);
+//            combinedBloomRight = highpassFilter(combinedBloomRight, 150.0f, sampleRate);
+//
+//            // Feed the combined signal back into the short delays
+//            shortFeedbackLeft[i] += combinedBloomLeft;
+//            shortFeedbackRight[i] += combinedBloomRight;
+//
+//            modulationPhases[i] += phaseIncrements[i];
+//            if (modulationPhases[i] >= 1.0f)
+//                modulationPhases[i] -= 1.0f;
+//        }
         
         float reverbWashOutputLeft = 0.0f;
         float reverbWashOutputRight = 0.0f;
@@ -560,11 +560,11 @@ void TriquetraAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juc
         float wetSignalLeft = (shortHadamardLeft[0] + shortHadamardLeft[1] + shortHadamardLeft[2] + shortHadamardLeft[3]) * 0.25f
                             + (longHadamardLeft[0] + longHadamardLeft[1] + longHadamardLeft[2] + longHadamardLeft[3]
                             + longHadamardLeft[4] + longHadamardLeft[5] + longHadamardLeft[6] + longHadamardLeft[7]) * 0.125f
-                            + reverbWashOutputLeft;
+                            + reverbWashOutputLeft * 0.5f;
         float wetSignalRight = (shortHadamardRight[0] + shortHadamardRight[1] + shortHadamardRight[2] + shortHadamardRight[3]) * 0.25f
                                      + (longHadamardRight[0] + longHadamardRight[1] + longHadamardRight[2] + longHadamardRight[3]
                                      + longHadamardRight[4] + longHadamardRight[5] + longHadamardRight[6] + longHadamardRight[7]) * 0.125f
-                                     + reverbWashOutputRight;
+                                     + reverbWashOutputRight * 0.5f;
         
 
 //        // Isolate reverb wash for testing
