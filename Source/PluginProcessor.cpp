@@ -305,6 +305,31 @@ float TriquetraAudioProcessor::getInterpolatedSample(float delayTime)
     return delayBuffer[readPosition] + fraction * (delayBuffer[nextSample] - delayBuffer[readPosition]);
 }
 
+
+
+float TriquetraAudioProcessor::lowpassFilter(float input, float cutoff, float sampleRate)
+{
+    static float lastOutput = 0.0f;
+    float alpha = 2.0f * juce::MathConstants<float>::pi * cutoff / sampleRate;
+    float output = lastOutput + alpha * (input - lastOutput);
+    lastOutput = output;
+    return output;
+}
+
+float TriquetraAudioProcessor::highpassFilter(float input, float cutoff, float sampleRate)
+{
+    static float lastInput = 0.0f, lastOutput = 0.0f;
+    float rc = 1.0f / (cutoff * 2.0f * juce::MathConstants<float>::pi);
+    float dt = 1.0f / sampleRate;
+    float alpha = dt / (rc + dt);
+
+    float output = alpha * (lastOutput + input - lastInput);  // High-pass filter equation
+    lastInput = input;
+    lastOutput = output;
+
+    return output;
+}
+
 void TriquetraAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midiMessages)
 {
     juce::ScopedNoDenormals noDenormals;
@@ -357,14 +382,37 @@ void TriquetraAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juc
         shortDelayProcessor.process(shortDelayTimes, shortFeedbackLeft, shortFeedbackRight, modulationValue, stereoOffset, shortDelayOutputLeft, shortDelayOutputRight, processedInputLeft, processedInputRight);
         longDelayProcessor.process(longDelayTimes, longFeedbackLeft, longFeedbackRight, modulationValue, stereoOffset, longDelayOutputLeft, longDelayOutputRight, processedInputLeft, processedInputRight);
 
-        // Sum short and long delay output for wet signal
-        float wetSignalLeft = (shortDelayOutputLeft[0] + shortDelayOutputLeft[1] + shortDelayOutputLeft[2] + shortDelayOutputLeft[3]) * 0.25f
-                            + (longDelayOutputLeft[0] + longDelayOutputLeft[1] + longDelayOutputLeft[2] + longDelayOutputLeft[3]
-                            + longDelayOutputLeft[4] + longDelayOutputLeft[5] + longDelayOutputLeft[6] + longDelayOutputLeft[7]) * 0.125f;
+        // Process reverb and get the reverb output
+        float reverbOutputLeft = 0.0f;
+        float reverbOutputRight = 0.0f;
 
-        float wetSignalRight = (shortDelayOutputRight[0] + shortDelayOutputRight[1] + shortDelayOutputRight[2] + shortDelayOutputRight[3]) * 0.25f
-                             + (longDelayOutputRight[0] + longDelayOutputRight[1] + longDelayOutputRight[2] + longDelayOutputRight[3]
-                             + longDelayOutputRight[4] + longDelayOutputRight[5] + longDelayOutputRight[6] + longDelayOutputRight[7]) * 0.125f;
+        reverbProcessor.process(shortDelayOutputLeft, shortDelayOutputRight,
+                                longDelayOutputLeft, longDelayOutputRight,
+                                reverbOutputLeft, reverbOutputRight);
+
+        // Combine short, long delay, and reverb output for wet signal
+//        float wetSignalLeft = (shortDelayOutputLeft[0] + shortDelayOutputLeft[1] + shortDelayOutputLeft[2] + shortDelayOutputLeft[3]) * 0.25f
+//                            + (longDelayOutputLeft[0] + longDelayOutputLeft[1] + longDelayOutputLeft[2] + longDelayOutputLeft[3]
+//                            + longDelayOutputLeft[4] + longDelayOutputLeft[5] + longDelayOutputLeft[6] + longDelayOutputLeft[7]) * 0.125f
+//                            + reverbOutputLeft;
+//
+//        float wetSignalRight = (shortDelayOutputRight[0] + shortDelayOutputRight[1] + shortDelayOutputRight[2] + shortDelayOutputRight[3]) * 0.25f
+//                             + (longDelayOutputRight[0] + longDelayOutputRight[1] + longDelayOutputRight[2] + longDelayOutputRight[3]
+//                             + longDelayOutputRight[4] + longDelayOutputRight[5] + longDelayOutputRight[6] + longDelayOutputRight[7]) * 0.125f
+//                             + reverbOutputRight;
+        
+//        float wetSignalLeft = (shortDelayOutputLeft[0] + shortDelayOutputLeft[1] + shortDelayOutputLeft[2] + shortDelayOutputLeft[3]);
+//
+//        float wetSignalRight = (shortDelayOutputRight[0] + shortDelayOutputRight[1] + shortDelayOutputRight[2] + shortDelayOutputRight[3]);
+        
+        float wetSignalLeft = (longDelayOutputLeft[0] + longDelayOutputLeft[1] + longDelayOutputLeft[2] + longDelayOutputLeft[3]
+                            + longDelayOutputLeft[4] + longDelayOutputLeft[5] + longDelayOutputLeft[6] + longDelayOutputLeft[7]);
+//
+        float wetSignalRight = (longDelayOutputRight[0] + longDelayOutputRight[1] + longDelayOutputRight[2] + longDelayOutputRight[3]
+                             + longDelayOutputRight[4] + longDelayOutputRight[5] + longDelayOutputRight[6] + longDelayOutputRight[7]);
+        
+//        float wetSignalLeft = reverbOutputLeft;
+//        float wetSignalRight = reverbOutputRight;
 
         // Combine wet and dry signals, apply final output mix
         float outputSampleLeft = inputSampleLeft * dryMix + wetSignalLeft * wetMix;
@@ -387,31 +435,6 @@ void TriquetraAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juc
         writePosition = (writePosition + 1) % delayBufferSize;
     }
 }
-
-
-float TriquetraAudioProcessor::lowpassFilter(float input, float cutoff, float sampleRate)
-{
-    static float lastOutput = 0.0f;
-    float alpha = 2.0f * juce::MathConstants<float>::pi * cutoff / sampleRate;
-    float output = lastOutput + alpha * (input - lastOutput);
-    lastOutput = output;
-    return output;
-}
-
-float TriquetraAudioProcessor::highpassFilter(float input, float cutoff, float sampleRate)
-{
-    static float lastInput = 0.0f, lastOutput = 0.0f;
-    float rc = 1.0f / (cutoff * 2.0f * juce::MathConstants<float>::pi);
-    float dt = 1.0f / sampleRate;
-    float alpha = dt / (rc + dt);
-
-    float output = alpha * (lastOutput + input - lastInput);  // High-pass filter equation
-    lastInput = input;
-    lastOutput = output;
-
-    return output;
-}
-
 
 
 inline float TriquetraAudioProcessor::clearDenormals(float value)
