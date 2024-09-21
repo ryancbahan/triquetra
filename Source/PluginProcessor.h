@@ -1,6 +1,7 @@
 #pragma once
 #include "ReverbProcessor.h"
 #include "ShortDelayProcessor.h"
+#include "LongDelayProcessor.h"
 
 #include <JuceHeader.h>
 struct AllPassFilter {
@@ -58,7 +59,7 @@ public:
 private:
     ReverbProcessor reverbProcessor;
     ShortDelayProcessor shortDelayProcessor;
-
+    LongDelayProcessor longDelayProcessor;
 
     std::vector<float> delayBuffer;
     int delayBufferSize;

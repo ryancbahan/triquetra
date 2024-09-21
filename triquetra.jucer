@@ -12,6 +12,18 @@
             file="Source/PluginEditor.cpp"/>
       <FILE id="kcRkdP" name="PluginEditor.h" compile="0" resource="0" file="Source/PluginEditor.h"/>
     </GROUP>
+    <FILE id="afQoti" name="LongDelayProcessor.cpp" compile="1" resource="0"
+          file="Source/LongDelayProcessor.cpp"/>
+    <FILE id="c8YcGF" name="LongDelayProcessor.h" compile="0" resource="0"
+          file="Source/LongDelayProcessor.h"/>
+    <FILE id="uJCzu6" name="ReverbProcessor.cpp" compile="1" resource="0"
+          file="Source/ReverbProcessor.cpp"/>
+    <FILE id="ANomhc" name="ReverbProcessor.h" compile="0" resource="0"
+          file="Source/ReverbProcessor.h"/>
+    <FILE id="jdiGEQ" name="ShortDelayProcessor.cpp" compile="1" resource="0"
+          file="Source/ShortDelayProcessor.cpp"/>
+    <FILE id="rfE8Xw" name="ShortDelayProcessor.h" compile="0" resource="0"
+          file="Source/ShortDelayProcessor.h"/>
   </MAINGROUP>
   <MODULES>
     <MODULE id="juce_audio_basics" showAllCode="1" useLocalCopy="0" useGlobalPath="1"/>

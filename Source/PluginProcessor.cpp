@@ -215,6 +215,24 @@ void TriquetraAudioProcessor::prepareToPlay(double sampleRate, int samplesPerBlo
        float diffusionAmount = 0.7f;
        float modulationFeedbackAmount = 0.2f;
        shortDelayProcessor.prepare(sampleRate, getTotalNumOutputChannels(), feedback, diffusionAmount, modulationFeedbackAmount);
+    
+    // Define variables for long delay preparation
+    float bloomFeedbackGain = 0.75f;
+    float attenuationFactor = 0.35f;
+    float longSubdivisionsFactor = 1.3f;
+
+    // Call prepare method of longDelayProcessor with these variables
+    longDelayProcessor.prepare(
+        sampleRate,
+        getTotalNumOutputChannels(),
+        feedback,
+        bloomFeedbackGain,
+        modulationFeedbackAmount,
+        attenuationFactor,
+        longSubdivisionsFactor
+    );
+
+
     modulatedShortDelayTimes = shortDelayTimes;
     modulatedLongDelayTimes = { 0.5f, 1.0f, 1.5f, 2.0f };  // Extend long delays for cascading trails
 
@@ -412,95 +430,32 @@ void TriquetraAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juc
         static std::array<float, 4> shortFeedbackRight = {0.0f, 0.0f, 0.0f, 0.0f};
         std::array<float, 4> shortHadamardLeft = { 0.0f, 0.0f, 0.0f, 0.0f };
          std::array<float, 4> shortHadamardRight = { 0.0f, 0.0f, 0.0f, 0.0f };
-        
+        // Initialize arrays to hold the long Hadamard mixed output
+        std::array<float, 8> longHadamardLeft = { 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f };
+        std::array<float, 8> longHadamardRight = { 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f };
+
         shortDelayProcessor.process(shortDelayTimes, shortFeedbackLeft, shortFeedbackRight,
                                     modulationValue, stereoOffset, shortHadamardLeft, shortHadamardRight,
                                     processedInputLeft, processedInputRight);
 
 
+        longDelayProcessor.process(longDelayTimes, longFeedbackLeft, longFeedbackRight,
+                                   modulationValue, stereoOffset,
+                                   longHadamardLeft, longHadamardRight,
+                                   processedInputLeft, processedInputRight);
 
-//        // Process short delays with feedback and modulation
-//        for (int i = 0; i < 4; ++i)
-//        {
-//            float baseDelayLeft = shortDelayTimes[i] * sampleRate;
-//            float baseDelayRight = baseDelayLeft + stereoOffset;
-//
-//            float modulatedDelayLeft = baseDelayLeft * (1.0f + modulationValue);
-//            float modulatedDelayRight = baseDelayRight * (1.0f + modulationValue);
-//
-//            shortDelayOutputLeft[i] = getInterpolatedSample(modulatedDelayLeft / sampleRate) + shortFeedbackLeft[i] * feedback;
-//            shortDelayOutputRight[i] = getInterpolatedSample(modulatedDelayRight / sampleRate) + shortFeedbackRight[i] * feedback;
-//
-//            // Apply all-pass filtering and update feedback
-//            shortDelayOutputLeft[i] = allPassFiltersShort[i].processSample(shortDelayOutputLeft[i]);
-//            shortDelayOutputRight[i] = allPassFiltersShort[i].processSample(shortDelayOutputRight[i]);
-//
-//            // Diffusion from additional all-pass filters
-//            shortDelayOutputLeft[i] = diffusionAmount * allPassFiltersShort[i].processSample(shortDelayOutputLeft[i]);
-//            shortDelayOutputRight[i] = diffusionAmount * allPassFiltersShort[i].processSample(shortDelayOutputRight[i]);
-//            
-//            shortDelayOutputLeft[i] = reverbWashLowpassFilterLeft.processSample(shortDelayOutputLeft[i]);
-//            shortDelayOutputRight[i] = reverbWashLowpassFilterRight.processSample(shortDelayOutputRight[i]);
-//
-//            shortFeedbackLeft[i] = shortDelayOutputLeft[i] * modulationFeedbackAmount;
-//            shortFeedbackRight[i] = shortDelayOutputRight[i] * modulationFeedbackAmount;
-//        }
 
-        // Apply Hadamard matrix for short delays
-//        std::array<float, 4> shortHadamardLeft = applyHadamardMixing(shortDelayOutputLeft);
-//        std::array<float, 4> shortHadamardRight = applyHadamardMixing(shortDelayOutputRight);
-
-        // Process long delays with bloom effect, subdivisions, and modulation
-        for (int i = 0; i < 4; ++i)
-        {
-            float baseDelayLeft = longDelayTimes[i] * sampleRate;
-            float baseDelayRight = baseDelayLeft - stereoOffset;
-
-            float modulatedDelayLeft = baseDelayLeft * (1.0f + modulationValue);
-            float modulatedDelayRight = baseDelayRight * (1.0f + modulationValue);
-
-            longDelayOutputLeft[i] = getInterpolatedSample(modulatedDelayLeft / sampleRate) + longFeedbackLeft[i] * longFeedback;
-            longDelayOutputRight[i] = getInterpolatedSample(modulatedDelayRight / sampleRate) + longFeedbackRight[i] * longFeedback;
-
-            // Introduce smaller and larger subdivisions for blooming effect
-            float bloomLeftSmall = getInterpolatedSample((modulatedDelayLeft * longSubdivisionsFactor) / sampleRate);
-            float bloomRightSmall = getInterpolatedSample((modulatedDelayRight * longSubdivisionsFactor) / sampleRate);
-
-            float bloomLeftLarge = getInterpolatedSample((modulatedDelayLeft / longSubdivisionsFactor) / sampleRate);
-            float bloomRightLarge = getInterpolatedSample((modulatedDelayRight / longSubdivisionsFactor) / sampleRate);
-
-            longDelayOutputLeft[i + 4] = bloomLeftSmall * bloomFeedbackGain + bloomLeftLarge * bloomFeedbackGain + longFeedbackLeft[i + 4] * longFeedback;
-            longDelayOutputRight[i + 4] = bloomRightSmall * bloomFeedbackGain + bloomRightLarge * bloomFeedbackGain + longFeedbackRight[i + 4] * longFeedback;
-
-            // Apply all-pass filtering and update feedback
-            longDelayOutputLeft[i] = allPassFiltersLong[i].processSample(longDelayOutputLeft[i]);
-            longDelayOutputRight[i] = allPassFiltersLong[i].processSample(longDelayOutputRight[i]);
-
-            // Apply attenuation to the long delays for further diffusion
-            longDelayOutputLeft[i] *= attenuationFactor;
-            longDelayOutputRight[i] *= attenuationFactor;
-            
-            longDelayOutputLeft[i] = reverbWashLowpassFilterLeft.processSample(longDelayOutputLeft[i]);
-            longDelayOutputRight[i] = reverbWashLowpassFilterRight.processSample(longDelayOutputRight[i]);
-
-            longFeedbackLeft[i] = longDelayOutputLeft[i] * modulationFeedbackAmount;
-            longFeedbackRight[i] = longDelayOutputRight[i] * modulationFeedbackAmount;
-        }
-
-        // Apply Hadamard matrix to long delays
-        std::array<float, 8> longHadamardLeft = applyHadamardMixing(longDelayOutputLeft);
-        std::array<float, 8> longHadamardRight = applyHadamardMixing(longDelayOutputRight);
 
         // Controlled cross-feedback between channels (for added stereo width and depth)
-        for (int i = 0; i < 4; ++i)
-        {
-            crossFeedbackLeft[i] = longHadamardRight[i] * crossFeedbackAmount;
-            crossFeedbackRight[i] = longHadamardLeft[i] * crossFeedbackAmount;
-
-            // Feed cross-feedback back into the main feedback buffers
-            longFeedbackLeft[i] += crossFeedbackLeft[i];
-            longFeedbackRight[i] += crossFeedbackRight[i];
-        }
+//        for (int i = 0; i < 4; ++i)
+//        {
+//            crossFeedbackLeft[i] = longHadamardRight[i] * crossFeedbackAmount;
+//            crossFeedbackRight[i] = longHadamardLeft[i] * crossFeedbackAmount;
+//
+//            // Feed cross-feedback back into the main feedback buffers
+//            longFeedbackLeft[i] += crossFeedbackLeft[i];
+//            longFeedbackRight[i] += crossFeedbackRight[i];
+//        }
 
         // Regenerative bloom: Introduce feedback from long delays and reverb wash back into short delays with modulation and gain
 //        for (int i = 0; i < 4; ++i)
@@ -584,9 +539,14 @@ void TriquetraAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juc
 //                                     + longHadamardRight[4] + longHadamardRight[5] + longHadamardRight[6] + longHadamardRight[7]) * 0.125f
 //                                     + reverbWashOutputRight * 0.5f;
         
-        float wetSignalLeft = (shortHadamardLeft[0] + shortHadamardLeft[1] + shortHadamardLeft[2] + shortHadamardLeft[3]);
-        float wetSignalRight = (shortHadamardRight[0] + shortHadamardRight[1] + shortHadamardRight[2] + shortHadamardRight[3]);
+//        float wetSignalLeft = (shortHadamardLeft[0] + shortHadamardLeft[1] + shortHadamardLeft[2] + shortHadamardLeft[3]);
+//        float wetSignalRight = (shortHadamardRight[0] + shortHadamardRight[1] + shortHadamardRight[2] + shortHadamardRight[3]);
         
+                float wetSignalLeft = longHadamardLeft[0] + longHadamardLeft[1] + longHadamardLeft[2] + longHadamardLeft[3]
+        + longHadamardLeft[4] + longHadamardLeft[5] + longHadamardLeft[6] + longHadamardLeft[7];
+        
+                float wetSignalRight = longHadamardRight[0] + longHadamardRight[1] + longHadamardRight[2] + longHadamardRight[3]
+        + longHadamardRight[4] + longHadamardRight[5] + longHadamardRight[6] + longHadamardRight[7];
 
 //        // Isolate reverb wash for testing
 //        float wetSignalLeft = reverbWashOutputLeft;
