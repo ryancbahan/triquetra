@@ -1,4 +1,7 @@
 #pragma once
+#include "ReverbProcessor.h"
+#include "ShortDelayProcessor.h"
+#include "LongDelayProcessor.h"
 
 #include <JuceHeader.h>
 struct AllPassFilter {
@@ -54,6 +57,33 @@ public:
     void setStateInformation (const void* data, int sizeInBytes) override;
 
 private:
+    std::array<float, 4> shortFeedbackLeft;
+    std::array<float, 4> shortFeedbackRight;
+    std::array<float, 8> longFeedbackLeft;
+    std::array<float, 8> longFeedbackRight;
+
+    int preDelayWritePos = 0;
+    std::array<float, 8> reverbWashLeft;
+    std::array<float, 8> reverbWashRight;
+    float modulationPhase = 0.0f;
+    std::vector<float> preDelayBufferLeft;
+    std::vector<float> preDelayBufferRight;
+    int preDelaySamples = 0;
+    float diffusionAmount = 0.0f;
+    float modulationFeedbackAmount = 0.0f;
+    float bloomFeedbackGain = 0.0f;
+    float attenuationFactor = 0.0f;
+    float longSubdivisionsFactor = 0.0f;
+    float previousInputLeft = 0.0f;
+    float previousOutputLeft = 0.0f;
+    float previousInputRight = 0.0f;
+    float previousOutputRight = 0.0f;
+    float modulationFrequency;  // Add this declaration
+
+    ReverbProcessor reverbProcessor;
+    ShortDelayProcessor shortDelayProcessor;
+    LongDelayProcessor longDelayProcessor;
+
     std::vector<float> delayBuffer;
     int delayBufferSize;
     int writePosition;
