@@ -25,8 +25,8 @@ void ReverbProcessor::prepare(double sampleRate, int samplesPerBlock)
     }
 
     // Set up filter coefficients with steeper slopes
-    auto lowCoefficients = juce::dsp::IIR::Coefficients<float>::makeLowPass(sampleRate, 1000.0f, 0.7071f);
-    auto highCoefficients = juce::dsp::IIR::Coefficients<float>::makeHighPass(sampleRate, 10.0f, 0.7071f);
+    auto lowCoefficients = juce::dsp::IIR::Coefficients<float>::makeLowPass(sampleRate, 3000.0f, 0.7071f);
+    auto highCoefficients = juce::dsp::IIR::Coefficients<float>::makeHighPass(sampleRate, 40.0f, 0.7071f);
     
     // Prepare steep lowpass and highpass filters
     lowpassFilter.prepare(spec);
@@ -52,7 +52,7 @@ void ReverbProcessor::process(const std::array<float, 4>& shortHadamardLeft,
 {
     updateModulation();
 
-    const float inputScale = 0.5f; // Reduce input gain to prevent buildup
+    const float inputScale = 0.2f; // Reduce input gain to prevent buildup
 
     for (int i = 0; i < 8; ++i)
     {
@@ -70,8 +70,8 @@ void ReverbProcessor::process(const std::array<float, 4>& shortHadamardLeft,
         }
 
         // Cross-feedback with attenuation
-        reverbWashLeft[i] += reverbWashRight[(i + 1) % 8] * 0.3f;
-        reverbWashRight[i] += reverbWashLeft[(i + 1) % 8] * 0.3f;
+        reverbWashLeft[i] += reverbWashRight[(i + 1) % 8] * 0.15f;
+        reverbWashRight[i] += reverbWashLeft[(i + 1) % 8] * 0.15f;
 
         // Apply decay
         reverbWashLeft[i] *= reverbWashDecay;
@@ -89,18 +89,18 @@ void ReverbProcessor::process(const std::array<float, 4>& shortHadamardLeft,
         outLeft += reverbWashLeft[i];
         outRight += reverbWashRight[i];
     }
-
-    // Normalize output
-    outLeft *= 0.125f;
-    outRight *= 0.125f;
-
-    // Apply DC blocking
-    outLeft = dcBlockerLeft.process(outLeft);
-    outRight = dcBlockerRight.process(outRight);
-
-    // Final safety clipping
-    outLeft = std::clamp(outLeft, -1.0f, 1.0f);
-    outRight = std::clamp(outRight, -1.0f, 1.0f);
+//
+//    // Normalize output
+//    outLeft *= 0.125f;
+//    outRight *= 0.125f;
+//
+//    // Apply DC blocking
+//    outLeft = dcBlockerLeft.process(outLeft);
+//    outRight = dcBlockerRight.process(outRight);
+//
+//    // Final safety clipping
+//    outLeft = std::clamp(outLeft, -1.0f, 1.0f);
+//    outRight = std::clamp(outRight, -1.0f, 1.0f);
 }
 
 void ReverbProcessor::updateModulation()
