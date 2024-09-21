@@ -19,6 +19,9 @@ public:
     void setReverbWashFeedbackGain(float newGain) { reverbWashFeedbackGain = newGain; }
     void setReverbWashModulationFreq(float newFreq) { reverbWashModulationFreq = newFreq; }
     void setReverbWashModulationDepth(float newDepth) { reverbWashModulationDepth = newDepth; }
+    
+    // Self-feedback setter
+    void setFeedbackGain(float newGain) { feedbackGain = newGain; }
 
 private:
     void updateModulation();
@@ -30,12 +33,13 @@ private:
     float reverbWashModulationDepth = 0.1f;
     float reverbWashDecay = 0.99f;
     float reverbWashFeedbackGain = 0.6f;
+    float feedbackGain = 0.3f; // Self-feedback gain
 
     std::array<float, 8> reverbWashLeft{};
     std::array<float, 8> reverbWashRight{};
 
     std::array<juce::dsp::IIR::Filter<float>, 4> allPassFiltersLong;
-    std::array<juce::dsp::IIR::Filter<float>, 4> allPassFiltersShort;
+    std::array<juce::dsp::IIR::Filter<float>, 6> allPassFiltersShort; // Increased diffusion stages
 
     juce::dsp::IIR::Filter<float> lowpassFilter;
     juce::dsp::IIR::Filter<float> highpassFilter;
@@ -46,6 +50,5 @@ private:
     private:
         float xm1 = 0.0f, ym1 = 0.0f;
     };
-
-    DCBlocker dcBlockerLeft, dcBlockerRight;
 };
+

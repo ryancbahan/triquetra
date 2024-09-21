@@ -1,6 +1,7 @@
 #include "ReverbProcessor.h"
 
 ReverbProcessor::ReverbProcessor()
+    : feedbackGain(0.3f)  // Control the amount of self-feedback (adjust as needed)
 {
     // Constructor is now empty as we set up filters in the prepare method
 }
@@ -52,55 +53,65 @@ void ReverbProcessor::process(const std::array<float, 4>& shortHadamardLeft,
 {
     updateModulation();
 
-    const float inputScale = 0.2f; // Reduce input gain to prevent buildup
+    const float inputScale = 0.15f; // Reduce input gain to prevent buildup
+    const float crossFeedbackLeftGain = 0.12f;
+    const float crossFeedbackRightGain = 0.18f;
 
     for (int i = 0; i < 8; ++i)
     {
+        // Combine short and long Hadamard matrices and apply input scaling
         float reverbInputLeft = (shortHadamardLeft[i % 4] + longHadamardLeft[i]) * inputScale;
         float reverbInputRight = (shortHadamardRight[i % 4] + longHadamardRight[i]) * inputScale;
 
-        // Process through all-pass filters
+        // Add self-feedback from the previous iteration
+        reverbInputLeft += reverbWashLeft[i] * feedbackGain;
+        reverbInputRight += reverbWashRight[i] * feedbackGain;
+
+        // Process through high-pass and low-pass filters
+        reverbInputLeft = highpassFilter.processSample(lowpassFilter.processSample(reverbInputLeft));
+        reverbInputRight = highpassFilter.processSample(lowpassFilter.processSample(reverbInputRight));
+
+        // Process the signal through long all-pass filters
         reverbWashLeft[i] = allPassFiltersLong[i % 4].processSample(reverbInputLeft);
         reverbWashRight[i] = allPassFiltersLong[i % 4].processSample(reverbInputRight);
 
-        for (int j = 0; j < 4; ++j)
+        // Process through additional diffusion stages
+        for (int j = 0; j < 6; ++j) // Increased diffusion stages
         {
-            reverbWashLeft[i] = allPassFiltersShort[j].processSample(reverbWashLeft[i]);
-            reverbWashRight[i] = allPassFiltersShort[j].processSample(reverbWashRight[i]);
+            reverbWashLeft[i] = allPassFiltersShort[j % 4].processSample(reverbWashLeft[i]);
+            reverbWashRight[i] = allPassFiltersShort[j % 4].processSample(reverbWashRight[i]);
         }
 
-        // Cross-feedback with attenuation
-        reverbWashLeft[i] += reverbWashRight[(i + 1) % 8] * 0.15f;
-        reverbWashRight[i] += reverbWashLeft[(i + 1) % 8] * 0.15f;
+        // Introduce cross-feedback with asymmetry for stereo width
+        reverbWashLeft[i] += reverbWashRight[(i + 1) % 8] * crossFeedbackLeftGain;
+        reverbWashRight[i] += reverbWashLeft[(i + 2) % 8] * crossFeedbackRightGain;
 
         // Apply decay
         reverbWashLeft[i] *= reverbWashDecay;
         reverbWashRight[i] *= reverbWashDecay;
 
-        // Apply steep filters and store the results
+        // Final high-pass and low-pass filtering
         reverbWashLeft[i] = highpassFilter.processSample(lowpassFilter.processSample(reverbWashLeft[i]));
         reverbWashRight[i] = highpassFilter.processSample(lowpassFilter.processSample(reverbWashRight[i]));
     }
 
     outLeft = 0.0f;
     outRight = 0.0f;
+    
+    // Sum the reverb wash signals for final output
     for (int i = 0; i < 8; ++i)
     {
         outLeft += reverbWashLeft[i];
         outRight += reverbWashRight[i];
     }
-//
-//    // Normalize output
+
+    // Optional normalization (uncomment if needed)
 //    outLeft *= 0.125f;
 //    outRight *= 0.125f;
-//
-//    // Apply DC blocking
-//    outLeft = dcBlockerLeft.process(outLeft);
-//    outRight = dcBlockerRight.process(outRight);
-//
-//    // Final safety clipping
-//    outLeft = std::clamp(outLeft, -1.0f, 1.0f);
-//    outRight = std::clamp(outRight, -1.0f, 1.0f);
+
+    // Final safety clipping
+    outLeft = std::clamp(outLeft, -1.0f, 1.0f);
+    outRight = std::clamp(outRight, -1.0f, 1.0f);
 }
 
 void ReverbProcessor::updateModulation()
@@ -110,10 +121,3 @@ void ReverbProcessor::updateModulation()
     reverbWashModulation = std::sin(2.0f * juce::MathConstants<float>::pi * reverbWashPhase) * reverbWashModulationDepth;
 }
 
-float ReverbProcessor::DCBlocker::process(float x)
-{
-    float y = x - xm1 + 0.995f * ym1;
-    xm1 = x;
-    ym1 = y;
-    return y;
-}

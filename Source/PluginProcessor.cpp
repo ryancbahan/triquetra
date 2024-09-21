@@ -512,29 +512,6 @@ void TriquetraAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juc
                                 longHadamardLeft, longHadamardRight,
                                 reverbWashOutputLeft, reverbWashOutputRight);
         
-//        // Mix reverb wash back into main signal
-//        for (int i = 0; i < 8; ++i)
-//        {
-//            reverbWashOutputLeft += reverbWashLeft[i];
-//            reverbWashOutputRight += reverbWashRight[i];
-//        }
-//        reverbWashOutputLeft *= 0.5f * reverbWashMixAmount;
-//        reverbWashOutputRight *= 0.5f * reverbWashMixAmount;
-//
-//        currentFeedbackLevel = 0.0f;
-//        for (int i = 0; i < 8; ++i)
-//        {
-//            currentFeedbackLevel += std::abs(reverbWashLeft[i]) + std::abs(reverbWashRight[i]);
-//        }
-//        currentFeedbackLevel /= 16.0f;
-//
-//        float feedbackScaleFactor = 1.0f / (1.0f + currentFeedbackLevel);
-//        for (int i = 0; i < 8; ++i)
-//        {
-//            reverbWashLeft[i] *= feedbackScaleFactor;
-//            reverbWashRight[i] *= feedbackScaleFactor;
-//        }
-        
 //        // Drastically intermix long Hadamard and reverb wash outputs with delayed cross-feedback for extended decay
 //        for (int i = 0; i < 8; ++i)
 //        {
@@ -580,19 +557,19 @@ void TriquetraAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juc
         // Final wet signal
         // Uncomment below to include short/long delays in addition to the reverb wash
         
-//        float wetSignalLeft = (shortHadamardLeft[0] + shortHadamardLeft[1] + shortHadamardLeft[2] + shortHadamardLeft[3]) * 0.25f
-//                            + (longHadamardLeft[0] + longHadamardLeft[1] + longHadamardLeft[2] + longHadamardLeft[3]
-//                            + longHadamardLeft[4] + longHadamardLeft[5] + longHadamardLeft[6] + longHadamardLeft[7]) * 0.125f
-//                            + reverbWashOutputLeft;
-//        float wetSignalRight = (shortHadamardRight[0] + shortHadamardRight[1] + shortHadamardRight[2] + shortHadamardRight[3]) * 0.25f
-//                                     + (longHadamardRight[0] + longHadamardRight[1] + longHadamardRight[2] + longHadamardRight[3]
-//                                     + longHadamardRight[4] + longHadamardRight[5] + longHadamardRight[6] + longHadamardRight[7]) * 0.125f
-//                                     + reverbWashOutputRight;
+        float wetSignalLeft = (shortHadamardLeft[0] + shortHadamardLeft[1] + shortHadamardLeft[2] + shortHadamardLeft[3]) * 0.25f
+                            + (longHadamardLeft[0] + longHadamardLeft[1] + longHadamardLeft[2] + longHadamardLeft[3]
+                            + longHadamardLeft[4] + longHadamardLeft[5] + longHadamardLeft[6] + longHadamardLeft[7]) * 0.125f
+                            + reverbWashOutputLeft;
+        float wetSignalRight = (shortHadamardRight[0] + shortHadamardRight[1] + shortHadamardRight[2] + shortHadamardRight[3]) * 0.25f
+                                     + (longHadamardRight[0] + longHadamardRight[1] + longHadamardRight[2] + longHadamardRight[3]
+                                     + longHadamardRight[4] + longHadamardRight[5] + longHadamardRight[6] + longHadamardRight[7]) * 0.125f
+                                     + reverbWashOutputRight;
         
 
 //        // Isolate reverb wash for testing
-        float wetSignalLeft = reverbWashOutputLeft;
-        float wetSignalRight = reverbWashOutputRight;
+//        float wetSignalLeft = reverbWashOutputLeft;
+//        float wetSignalRight = reverbWashOutputRight;
 
         // Apply dry/wet mix and output gain
         float outputSampleLeft = inputSampleLeft * dryMix + wetSignalLeft * wetMix;
@@ -607,8 +584,8 @@ void TriquetraAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juc
         outputSampleRight = juce::jlimit(-1.0f, 1.0f, outputSampleRight);
 
         // Write final output to buffer
-        buffer.setSample(0, sample, wetSignalLeft);
-        buffer.setSample(1, sample, wetSignalRight);
+        buffer.setSample(0, sample, outputSampleLeft);
+        buffer.setSample(1, sample, outputSampleRight);
 
         // Update delay buffer for feedback
         delayBuffer[writePosition] = (outputSampleLeft + outputSampleRight) * 0.5f;
