@@ -38,4 +38,5 @@ private:
     float getInterpolatedSample(const std::vector<float>& buffer, float delayInSamples);
     void updateDelayBuffer(float inputLeft, float inputRight);
     std::array<float, 8> applyHadamardMixing(const std::array<float, 8>& input);
+    std::array<float, 4> irregularDelayFactors;
 };
