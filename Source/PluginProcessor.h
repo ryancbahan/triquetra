@@ -2,7 +2,8 @@
 #include "ReverbProcessor.h"
 #include "ShortDelayProcessor.h"
 #include "LongDelayProcessor.h"
-
+#include <array>
+#include <utility>
 #include <JuceHeader.h>
 struct AllPassFilter {
     float a = 0.0f;
@@ -106,7 +107,18 @@ private:
     std::array<float, 8> modulationFrequencies;
     std::array<float, 8> modulationPhases;
     float applyCompression(float sample, float threshold, float ratio);
-
+    std::pair<float, float> processAndSumSignals(
+        const std::array<float, 4>& shortDelayOutputLeft,
+        const std::array<float, 4>& shortDelayOutputRight,
+        const std::array<float, 8>& longDelayOutputLeft,
+        const std::array<float, 8>& longDelayOutputRight,
+        const std::array<float, 8>& reverbOutputLeft,
+        const std::array<float, 8>& reverbOutputRight,
+        float inputSampleLeft,
+        float inputSampleRight,
+        float dryMix,
+        float wetMix,
+        float outputGain);
 
     std::array<std::array<float, 4>, 4> hadamardMatrix;
     juce::dsp::IIR::Filter<float> lowpassFilterLeft;

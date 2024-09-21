@@ -361,8 +361,8 @@ void TriquetraAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juc
         std::array<float, 4> shortDelayOutputRight = { 0.0f, 0.0f, 0.0f, 0.0f };
         std::array<float, 8> longDelayOutputLeft = { 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f };
         std::array<float, 8> longDelayOutputRight = { 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f };
-        std::array<float, 8> reverbOutputLeft = { 0.0f, 0.0f, 0.0f, 0.0f };
-        std::array<float, 8> reverbOutputRight = { 0.0f, 0.0f, 0.0f, 0.0f };
+        std::array<float, 8> reverbOutputLeft = { 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f };
+        std::array<float, 8> reverbOutputRight = { 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f };
         
         // Update modulation
         modulationPhase += modulationFrequency / sampleRate;
@@ -378,28 +378,13 @@ void TriquetraAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juc
                                 longDelayOutputLeft, longDelayOutputRight,
                                 reverbOutputLeft, reverbOutputRight);
 
-        // Combine short, long delay, and reverb output for wet signal
-        float wetSignalLeft = (shortDelayOutputLeft[0] + shortDelayOutputLeft[1] + shortDelayOutputLeft[2] + shortDelayOutputLeft[3]) * 0.25f
-                            + (longDelayOutputLeft[0] + longDelayOutputLeft[1] + longDelayOutputLeft[2] + longDelayOutputLeft[3]
-                            + longDelayOutputLeft[4] + longDelayOutputLeft[5] + longDelayOutputLeft[6] + longDelayOutputLeft[7]) * 0.125f
-                            + (reverbOutputRight[0] + reverbOutputRight[1] + reverbOutputRight[2] + reverbOutputRight[3]);
-
-        float wetSignalRight = (shortDelayOutputRight[0] + shortDelayOutputRight[1] + shortDelayOutputRight[2] + shortDelayOutputRight[3]) * 0.25f
-                             + (longDelayOutputRight[0] + longDelayOutputRight[1] + longDelayOutputRight[2] + longDelayOutputRight[3]
-                             + longDelayOutputRight[4] + longDelayOutputRight[5] + longDelayOutputRight[6] + longDelayOutputRight[7]) * 0.125f
-                             + (reverbOutputLeft[0] + reverbOutputLeft[1] + reverbOutputLeft[2] + reverbOutputLeft[3]);
-
-        // Combine wet and dry signals, apply final output mix
-        float outputSampleLeft = inputSampleLeft * dryMix + wetSignalLeft * wetMix;
-        float outputSampleRight = inputSampleRight * dryMix + wetSignalRight * wetMix;
-
-        // Apply soft clipping and output gain
-        outputSampleLeft = softClip(applyGain(outputSampleLeft, outputGain));
-        outputSampleRight = softClip(applyGain(outputSampleRight, outputGain));
-
-        // Safety clipping
-        outputSampleLeft = juce::jlimit(-1.0f, 1.0f, outputSampleLeft);
-        outputSampleRight = juce::jlimit(-1.0f, 1.0f, outputSampleRight);
+        auto [outputSampleLeft, outputSampleRight] = processAndSumSignals(
+            shortDelayOutputLeft, shortDelayOutputRight,
+            longDelayOutputLeft, longDelayOutputRight,
+            reverbOutputLeft, reverbOutputRight,
+            processedInputLeft, processedInputRight,
+            dryMix, wetMix, outputGain
+        );
 
         // Write final output to buffer
         buffer.setSample(0, sample, outputSampleLeft);
@@ -409,6 +394,45 @@ void TriquetraAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juc
         delayBuffer[writePosition] = (outputSampleLeft + outputSampleRight) * 0.5f;
         writePosition = (writePosition + 1) % delayBufferSize;
     }
+}
+
+std::pair<float, float> TriquetraAudioProcessor::processAndSumSignals(
+    const std::array<float, 4>& shortDelayOutputLeft,
+    const std::array<float, 4>& shortDelayOutputRight,
+    const std::array<float, 8>& longDelayOutputLeft,
+    const std::array<float, 8>& longDelayOutputRight,
+    const std::array<float, 8>& reverbOutputLeft,
+    const std::array<float, 8>& reverbOutputRight,
+    float inputSampleLeft,
+    float inputSampleRight,
+    float dryMix,
+    float wetMix,
+    float outputGain)
+{
+    // Combine short, long delay, and reverb output for wet signal
+    float wetSignalLeft = (shortDelayOutputLeft[0] + shortDelayOutputLeft[1] + shortDelayOutputLeft[2] + shortDelayOutputLeft[3]) * 0.25f
+                        + (longDelayOutputLeft[0] + longDelayOutputLeft[1] + longDelayOutputLeft[2] + longDelayOutputLeft[3]
+                        + longDelayOutputLeft[4] + longDelayOutputLeft[5] + longDelayOutputLeft[6] + longDelayOutputLeft[7]) * 0.125f
+                        + (reverbOutputRight[0] + reverbOutputRight[1] + reverbOutputRight[2] + reverbOutputRight[3]);
+
+    float wetSignalRight = (shortDelayOutputRight[0] + shortDelayOutputRight[1] + shortDelayOutputRight[2] + shortDelayOutputRight[3]) * 0.25f
+                         + (longDelayOutputRight[0] + longDelayOutputRight[1] + longDelayOutputRight[2] + longDelayOutputRight[3]
+                         + longDelayOutputRight[4] + longDelayOutputRight[5] + longDelayOutputRight[6] + longDelayOutputRight[7]) * 0.125f
+                         + (reverbOutputLeft[0] + reverbOutputLeft[1] + reverbOutputLeft[2] + reverbOutputLeft[3]);
+
+    // Combine wet and dry signals, apply final output mix
+    float outputSampleLeft = inputSampleLeft * dryMix + wetSignalLeft * wetMix;
+    float outputSampleRight = inputSampleRight * dryMix + wetSignalRight * wetMix;
+
+    // Apply soft clipping and output gain
+    outputSampleLeft = softClip(applyGain(outputSampleLeft, outputGain));
+    outputSampleRight = softClip(applyGain(outputSampleRight, outputGain));
+
+    // Safety clipping
+    outputSampleLeft = juce::jlimit(-1.0f, 1.0f, outputSampleLeft);
+    outputSampleRight = juce::jlimit(-1.0f, 1.0f, outputSampleRight);
+
+    return {outputSampleLeft, outputSampleRight};
 }
 
 
