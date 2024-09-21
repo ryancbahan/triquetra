@@ -56,12 +56,15 @@ void LongDelayProcessor::process(const std::array<float, 4>& longDelayTimes,
     float attenuatedInputLeft = inputSampleLeft * attenuationFactor;
     float attenuatedInputRight = inputSampleRight * attenuationFactor;
 
+    // Zero out the Hadamard arrays
+    std::fill(longHadamardLeft.begin(), longHadamardLeft.end(), 0.0f);
+    std::fill(longHadamardRight.begin(), longHadamardRight.end(), 0.0f);
+
     for (int i = 0; i < 4; ++i)
     {
         // Ensure positive delay time
         float baseDelayLeft = std::max(0.0f, longDelayTimes[i] * static_cast<float>(sampleRate)); // Ensure positive delay time
         float baseDelayRight = std::max(0.0f, baseDelayLeft - stereoOffset); // Stereo offset is subtracted
-
 
         float modulatedDelayLeft = baseDelayLeft * (1.0f + modulationValue);
         float modulatedDelayRight = baseDelayRight * (1.0f + modulationValue);
@@ -79,6 +82,13 @@ void LongDelayProcessor::process(const std::array<float, 4>& longDelayTimes,
         longHadamardRight[i + 4] = attenuatedInputRight;
     }
 
+    // Apply gain limiting on feedback to prevent overload and clipping
+    for (int i = 0; i < 8; ++i)
+    {
+        longFeedbackLeft[i] = juce::jlimit(-0.95f, 0.95f, longFeedbackLeft[i] + longHadamardLeft[i] * feedback);
+        longFeedbackRight[i] = juce::jlimit(-0.95f, 0.95f, longFeedbackRight[i] + longHadamardRight[i] * feedback);
+    }
+
     // Update the delay buffer with the attenuated input sample (no feedback yet)
     for (int i = 0; i < 4; ++i)
     {
@@ -90,34 +100,25 @@ void LongDelayProcessor::process(const std::array<float, 4>& longDelayTimes,
     writePosition = (writePosition + 1) % delayBufferSize;
 }
 
-
 float LongDelayProcessor::getInterpolatedSample(const std::vector<float>& buffer, float delayInSamples)
 {
+    // Ensure delay is positive and within buffer bounds
     int readPosition = (writePosition - static_cast<int>(delayInSamples) + delayBufferSize) % delayBufferSize;
     float fraction = delayInSamples - static_cast<int>(delayInSamples);
+
+    // Calculate the next position, wrapping around the circular buffer
     int nextPosition = (readPosition + 1) % delayBufferSize;
 
-    // Return interpolated value, ensuring no denormals
-    return clearDenormals(buffer[readPosition] + fraction * (buffer[nextPosition] - buffer[readPosition]));
-}
+    // Return interpolated sample between the current and next sample in the buffer
+    float currentSample = buffer[readPosition];
+    float nextSample = buffer[nextPosition];
 
-std::array<float, 8> LongDelayProcessor::applyHadamardMixing(const std::array<float, 8>& input)
-{
-    std::array<float, 8> output;
-    output[0] = input[0] + input[1] + input[2] + input[3] + input[4] + input[5] + input[6] + input[7];
-    output[1] = input[0] - input[1] + input[2] - input[3] + input[4] - input[5] + input[6] - input[7];
-    output[2] = input[0] + input[1] - input[2] - input[3] + input[4] + input[5] - input[6] - input[7];
-    output[3] = input[0] - input[1] - input[2] + input[3] + input[4] - input[5] - input[6] + input[7];
-    output[4] = input[0] + input[1] + input[2] + input[3] - input[4] - input[5] - input[6] - input[7];
-    output[5] = input[0] - input[1] + input[2] - input[3] - input[4] + input[5] - input[6] + input[7];
-    output[6] = input[0] + input[1] - input[2] + input[3] - input[4] + input[5] - input[6] + input[7];
-    output[7] = input[0] - input[1] + input[2] + input[3] - input[4] - input[5] + input[6] - input[7];
-    return output;
+    // Linear interpolation between current and next sample
+    return clearDenormals(currentSample + fraction * (nextSample - currentSample));
 }
 
 inline float LongDelayProcessor::clearDenormals(float value)
 {
-    // Ensure small values (denormals) don't cause performance issues
+    // Zero out very small values to prevent denormals (tiny numbers causing performance issues)
     return std::abs(value) < 1.0e-15f ? 0.0f : value;
 }
-

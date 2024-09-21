@@ -388,6 +388,11 @@ void TriquetraAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juc
     // New cross-feedback and modulation buffers for extended diffusion
     static std::array<float, 4> crossFeedbackLeft = {0.0f, 0.0f, 0.0f, 0.0f};
     static std::array<float, 4> crossFeedbackRight = {0.0f, 0.0f, 0.0f, 0.0f};
+    
+    std::fill(shortFeedbackLeft.begin(), shortFeedbackLeft.end(), 0.0f);
+    std::fill(shortFeedbackRight.begin(), shortFeedbackRight.end(), 0.0f);
+    std::fill(longFeedbackLeft.begin(), longFeedbackLeft.end(), 0.0f);
+    std::fill(longFeedbackRight.begin(), longFeedbackRight.end(), 0.0f);
 
     for (int sample = 0; sample < buffer.getNumSamples(); ++sample)
     {
