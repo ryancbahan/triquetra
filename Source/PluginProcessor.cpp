@@ -357,17 +357,6 @@ void TriquetraAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juc
         processedInputLeft = applyGain(processedInputLeft, inputGain);
         processedInputRight = applyGain(processedInputRight, inputGain);
 
-        // Pre-delay handling
-        float delayedInputLeft = preDelayBufferLeft[preDelayWritePos];
-        float delayedInputRight = preDelayBufferRight[preDelayWritePos];
-
-        // Write current sample into the pre-delay buffer
-        preDelayBufferLeft[preDelayWritePos] = processedInputLeft;
-        preDelayBufferRight[preDelayWritePos] = processedInputRight;
-
-        // Update pre-delay write position
-        preDelayWritePos = (preDelayWritePos + 1) % preDelaySamples;
-
         std::array<float, 4> shortDelayOutputLeft = { 0.0f, 0.0f, 0.0f, 0.0f };
         std::array<float, 4> shortDelayOutputRight = { 0.0f, 0.0f, 0.0f, 0.0f };
         std::array<float, 8> longDelayOutputLeft = { 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f };
