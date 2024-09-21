@@ -7,7 +7,7 @@ LongDelayProcessor::LongDelayProcessor()
     // Constructor
     std::random_device rd;
     std::mt19937 gen(rd());
-    std::uniform_real_distribution<> dis(0.75, 1.25);
+    std::uniform_real_distribution<> dis(0.9, 1.1);
     
     // Initialize irregular delay factors
     for (auto& factor : irregularDelayFactors) {
@@ -63,28 +63,50 @@ void LongDelayProcessor::process(const std::array<float, 4>& longDelayTimes,
     std::fill(longHadamardLeft.begin(), longHadamardLeft.end(), 0.0f);
     std::fill(longHadamardRight.begin(), longHadamardRight.end(), 0.0f);
 
+    float cumulativeIrregularDelayLeft = 0.0f;
+    float cumulativeIrregularDelayRight = 0.0f;
+
     for (int i = 0; i < 4; ++i)
     {
         float baseDelayLeft = std::max(0.0f, longDelayTimes[i] * static_cast<float>(sampleRate));
         float baseDelayRight = std::max(0.0f, baseDelayLeft - stereoOffset);
 
-        float modulatedDelayLeft = baseDelayLeft * (1.0f + modulationValue);
-        float modulatedDelayRight = baseDelayRight * (1.0f + modulationValue);
+        // Original delay line
+        float originalDelayLeft = baseDelayLeft * (1.0f + modulationValue);
+        float originalDelayRight = baseDelayRight * (1.0f + modulationValue);
 
-        // Regular delay
-        longHadamardLeft[i] = getInterpolatedSample(delayBufferLeft[i], modulatedDelayLeft);
-        longHadamardRight[i] = getInterpolatedSample(delayBufferRight[i], modulatedDelayRight);
+        // Get samples for original delays
+        longHadamardLeft[i] = getInterpolatedSample(delayBufferLeft[i], originalDelayLeft);
+        longHadamardRight[i] = getInterpolatedSample(delayBufferRight[i], originalDelayRight);
 
-        // Irregular delays (carefully introduced)
-        float irregularDelayLeft = modulatedDelayLeft * irregularDelayFactors[i];
-        float irregularDelayRight = modulatedDelayRight * irregularDelayFactors[i];
+        // Calculate irregular delay
+        float irregularDelayLeft = baseDelayLeft * irregularDelayFactors[i];
+        float irregularDelayRight = baseDelayRight * irregularDelayFactors[i];
 
-        float irregularSampleLeft = getInterpolatedSample(delayBufferLeft[i], irregularDelayLeft);
-        float irregularSampleRight = getInterpolatedSample(delayBufferRight[i], irregularDelayRight);
+        // Alternate between shorter and longer irregular delays
+        if (i % 2 == 0) {
+            irregularDelayLeft /= longSubdivisionsFactor;
+            irregularDelayRight /= longSubdivisionsFactor;
+        } else {
+            irregularDelayLeft *= longSubdivisionsFactor;
+            irregularDelayRight *= longSubdivisionsFactor;
+        }
 
-        // Mix irregular delays into Hadamard arrays (with reduced gain)
-        longHadamardLeft[i + 4] = irregularSampleLeft * bloomFeedbackGain * 0.5f;
-        longHadamardRight[i + 4] = irregularSampleRight * bloomFeedbackGain * 0.5f;
+        // Add to cumulative irregular delay
+        cumulativeIrregularDelayLeft += irregularDelayLeft;
+        cumulativeIrregularDelayRight += irregularDelayRight;
+
+        // Ensure delays don't exceed buffer size
+        cumulativeIrregularDelayLeft = std::min(static_cast<float>(delayBufferSize - 1), cumulativeIrregularDelayLeft);
+        cumulativeIrregularDelayRight = std::min(static_cast<float>(delayBufferSize - 1), cumulativeIrregularDelayRight);
+
+        // Get samples for irregular delays
+        float irregularSampleLeft = getInterpolatedSample(delayBufferLeft[i], cumulativeIrregularDelayLeft);
+        float irregularSampleRight = getInterpolatedSample(delayBufferRight[i], cumulativeIrregularDelayRight);
+
+        // Mix irregular delays into Hadamard arrays
+        longHadamardLeft[i + 4] = irregularSampleLeft * bloomFeedbackGain;
+        longHadamardRight[i + 4] = irregularSampleRight * bloomFeedbackGain;
 
         // Apply all-pass filtering for diffusion
         longHadamardLeft[i] = allPassFiltersLong[i].processSample(longHadamardLeft[i]);
@@ -99,18 +121,18 @@ void LongDelayProcessor::process(const std::array<float, 4>& longDelayTimes,
         longHadamardRight[i] = reverbWashLowpassFilterRight.processSample(longHadamardRight[i]);
     }
 
-    // Calculate feedback (similar to original implementation)
+    // Calculate feedback using the global feedback control
     for (int i = 0; i < 4; ++i)
     {
-        longFeedbackLeft[i] = juce::jlimit(-0.95f, 0.95f, longFeedbackLeft[i] + longHadamardLeft[i] * feedback);
-        longFeedbackRight[i] = juce::jlimit(-0.95f, 0.95f, longFeedbackRight[i] + longHadamardRight[i] * feedback);
+        longFeedbackLeft[i] = juce::jlimit(-0.95f, 0.95f, (longHadamardLeft[i] + longHadamardLeft[i + 4]) * feedback);
+        longFeedbackRight[i] = juce::jlimit(-0.95f, 0.95f, (longHadamardRight[i] + longHadamardRight[i + 4]) * feedback);
     }
 
-    // Update the delay buffer with the attenuated input sample (no feedback yet)
+    // Update the delay buffer with the attenuated input sample and feedback
     for (int i = 0; i < 4; ++i)
     {
-        delayBufferLeft[i][writePosition] = attenuatedInputLeft;
-        delayBufferRight[i][writePosition] = attenuatedInputRight;
+        delayBufferLeft[i][writePosition] = attenuatedInputLeft + longFeedbackLeft[i];
+        delayBufferRight[i][writePosition] = attenuatedInputRight + longFeedbackRight[i];
     }
 
     // Increment write position in circular delay buffer
