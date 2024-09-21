@@ -36,9 +36,9 @@ void ShortDelayProcessor::process(const std::array<float, 4>& shortDelayTimes,
                                   const std::array<float, 4>& shortFeedbackLeft,
                                   const std::array<float, 4>& shortFeedbackRight,
                                   float modulationValue, float stereoOffset,
-                                  float inputSampleLeft, float inputSampleRight,  // Use input samples
-                                  std::array<float, 4>& shortHadamardLeft,
-                                  std::array<float, 4>& shortHadamardRight)
+                                  std::array<float, 4>& shortDelayOutputLeft,
+                                  std::array<float, 4>& shortDelayOutputRight,
+                                  float inputSampleLeft, float inputSampleRight)
 {
     for (int i = 0; i < 4; ++i)
     {
@@ -48,20 +48,37 @@ void ShortDelayProcessor::process(const std::array<float, 4>& shortDelayTimes,
         float modulatedDelayLeft = baseDelayLeft * (1.0f + modulationValue);
         float modulatedDelayRight = baseDelayRight * (1.0f + modulationValue);
 
-        // Store the input samples into the delay buffer
-        delayBufferLeft[i][writePosition] = inputSampleLeft;
-        delayBufferRight[i][writePosition] = inputSampleRight;
+        // Fetch interpolated samples from delay buffer
+        shortDelayOutputLeft[i] = getInterpolatedSample(delayBufferLeft[i], modulatedDelayLeft) + shortFeedbackLeft[i] * feedback;
+        shortDelayOutputRight[i] = getInterpolatedSample(delayBufferRight[i], modulatedDelayRight) + shortFeedbackRight[i] * feedback;
 
-        // Process the delay output using interpolation and feedback
-        shortHadamardLeft[i] = getInterpolatedSample(delayBufferLeft[i], modulatedDelayLeft) + shortFeedbackLeft[i] * feedback;
-        shortHadamardRight[i] = getInterpolatedSample(delayBufferRight[i], modulatedDelayRight) + shortFeedbackRight[i] * feedback;
+        // Incorporate input sample to the delay line (important)
+        shortDelayOutputLeft[i] += inputSampleLeft;
+        shortDelayOutputRight[i] += inputSampleRight;
 
-        // Apply any additional processing, like filtering or feedback management
+        // Apply all-pass filtering and update feedback
+        shortDelayOutputLeft[i] = allPassFiltersShort[i].processSample(shortDelayOutputLeft[i]);
+        shortDelayOutputRight[i] = allPassFiltersShort[i].processSample(shortDelayOutputRight[i]);
+
+        // Diffusion and additional filtering
+        shortDelayOutputLeft[i] = diffusionAmount * allPassFiltersShort[i].processSample(shortDelayOutputLeft[i]);
+        shortDelayOutputRight[i] = diffusionAmount * allPassFiltersShort[i].processSample(shortDelayOutputRight[i]);
+
+        shortDelayOutputLeft[i] = reverbWashLowpassFilterLeft.processSample(shortDelayOutputLeft[i]);
+        shortDelayOutputRight[i] = reverbWashLowpassFilterRight.processSample(shortDelayOutputRight[i]);
+    }
+
+    // Update the delay buffer for future feedback (left and right)
+    for (int i = 0; i < 4; ++i)
+    {
+        delayBufferLeft[i][writePosition] = shortDelayOutputLeft[i];
+        delayBufferRight[i][writePosition] = shortDelayOutputRight[i];
     }
 
     // Update write position in circular delay buffer
     writePosition = (writePosition + 1) % delayBufferSize;
 }
+
 
 
 float ShortDelayProcessor::getInterpolatedSample(const std::vector<float>& buffer, float delayInSamples)

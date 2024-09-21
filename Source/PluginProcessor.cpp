@@ -414,9 +414,9 @@ void TriquetraAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juc
          std::array<float, 4> shortHadamardRight = { 0.0f, 0.0f, 0.0f, 0.0f };
         
         shortDelayProcessor.process(shortDelayTimes, shortFeedbackLeft, shortFeedbackRight,
-                                        modulationValue, stereoOffset,
-                                        processedInputLeft, processedInputRight, // Pass input samples here
-                                        shortHadamardLeft, shortHadamardRight);
+                                    modulationValue, stereoOffset, shortHadamardLeft, shortHadamardRight,
+                                    processedInputLeft, processedInputRight);
+
 
 
 //        // Process short delays with feedback and modulation

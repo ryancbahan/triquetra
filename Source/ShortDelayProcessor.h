@@ -12,12 +12,12 @@ public:
     
     // Return processed arrays with Hadamard mixed data
     void process(const std::array<float, 4>& shortDelayTimes,
-                 const std::array<float, 4>& shortFeedbackLeft,
-                 const std::array<float, 4>& shortFeedbackRight,
-                 float modulationValue, float stereoOffset,
-                 float inputSampleLeft, float inputSampleRight,  // Pass input samples
-                 std::array<float, 4>& shortHadamardLeft,
-                 std::array<float, 4>& shortHadamardRight);
+                                      const std::array<float, 4>& shortFeedbackLeft,
+                                      const std::array<float, 4>& shortFeedbackRight,
+                                      float modulationValue, float stereoOffset,
+                                      std::array<float, 4>& shortDelayOutputLeft,
+                                      std::array<float, 4>& shortDelayOutputRight,
+                 float inputSampleLeft, float inputSampleRight);
 
 private:
     float getInterpolatedSample(const std::vector<float>& buffer, float delayInSamples);
