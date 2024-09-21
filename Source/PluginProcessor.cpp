@@ -369,14 +369,60 @@ void TriquetraAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juc
         if (modulationPhase >= 1.0f) modulationPhase -= 1.0f;
         float modulationValue = std::sin(2.0f * juce::MathConstants<float>::pi * modulationPhase) * modulationDepth;
 
+        // Define LFO-modulated matrix for cross-feedback
+        std::array<std::array<float, 8>, 4> shortToLongMatrix;
+        std::array<std::array<float, 8>, 4> shortToReverbMatrix;
+        std::array<std::array<float, 4>, 8> longToShortMatrix;
+        std::array<std::array<float, 8>, 8> longToReverbMatrix;
+
+        // Initialize LFO-modulated matrix values (simple sine modulation)
+        for (int i = 0; i < 4; ++i) {
+            for (int j = 0; j < 8; ++j) {
+                float lfoMod = 0.5f + 0.5f * std::sin(2.0f * juce::MathConstants<float>::pi * (modulationPhase + i * 0.1f + j * 0.05f));
+                shortToLongMatrix[i][j] = lfoMod;
+                shortToReverbMatrix[i][j] = lfoMod * 0.8f; // slightly lower influence
+            }
+        }
+
+        for (int i = 0; i < 8; ++i) {
+            for (int j = 0; j < 4; ++j) {
+                float lfoMod = 0.5f + 0.5f * std::sin(2.0f * juce::MathConstants<float>::pi * (modulationPhase + i * 0.07f + j * 0.03f));
+                longToShortMatrix[i][j] = lfoMod;
+            }
+            for (int j = 0; j < 8; ++j) {
+                float lfoMod = 0.5f + 0.5f * std::sin(2.0f * juce::MathConstants<float>::pi * (modulationPhase + i * 0.08f + j * 0.06f));
+                longToReverbMatrix[i][j] = lfoMod * 0.9f; // slightly attenuate
+            }
+        }
+
         // Process delays and feedback
         shortDelayProcessor.process(shortDelayTimes, shortFeedbackLeft, shortFeedbackRight, modulationValue, stereoOffset, shortDelayOutputLeft, shortDelayOutputRight, processedInputLeft, processedInputRight);
-        
         longDelayProcessor.process(longDelayTimes, longFeedbackLeft, longFeedbackRight, modulationValue, stereoOffset, longDelayOutputLeft, longDelayOutputRight, processedInputLeft, processedInputRight);
 
         reverbProcessor.process(shortDelayOutputLeft, shortDelayOutputRight,
                                 longDelayOutputLeft, longDelayOutputRight,
                                 reverbOutputLeft, reverbOutputRight);
+
+        // Apply cross-feedback from short delays to long delays and reverb
+        for (int i = 0; i < 8; ++i) {
+            longDelayOutputLeft[i] += shortToLongMatrix[i % 4][i] * shortDelayOutputLeft[i % 4];
+            longDelayOutputRight[i] += shortToLongMatrix[i % 4][i] * shortDelayOutputRight[i % 4];
+            
+            reverbOutputLeft[i] += shortToReverbMatrix[i % 4][i] * shortDelayOutputLeft[i % 4];
+            reverbOutputRight[i] += shortToReverbMatrix[i % 4][i] * shortDelayOutputRight[i % 4];
+        }
+
+        // Cross-feedback from long delays into short delays
+        for (int i = 0; i < 4; ++i) {
+            shortDelayOutputLeft[i] += longToShortMatrix[i][i] * longDelayOutputLeft[i % 8];
+            shortDelayOutputRight[i] += longToShortMatrix[i][i] * longDelayOutputRight[i % 8];
+        }
+
+        // Apply cross-feedback from long delays to reverb
+        for (int i = 0; i < 8; ++i) {
+            reverbOutputLeft[i] += longToReverbMatrix[i][i] * longDelayOutputLeft[i];
+            reverbOutputRight[i] += longToReverbMatrix[i][i] * longDelayOutputRight[i];
+        }
 
         auto [outputSampleLeft, outputSampleRight] = processAndSumSignals(
             shortDelayOutputLeft, shortDelayOutputRight,
@@ -395,6 +441,7 @@ void TriquetraAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juc
         writePosition = (writePosition + 1) % delayBufferSize;
     }
 }
+
 
 std::pair<float, float> TriquetraAudioProcessor::processAndSumSignals(
     const std::array<float, 4>& shortDelayOutputLeft,
