@@ -1,4 +1,5 @@
 #pragma once
+#include "ReverbProcessor.h"
 
 #include <JuceHeader.h>
 struct AllPassFilter {
@@ -54,6 +55,8 @@ public:
     void setStateInformation (const void* data, int sizeInBytes) override;
 
 private:
+    ReverbProcessor reverbProcessor;
+
     std::vector<float> delayBuffer;
     int delayBufferSize;
     int writePosition;
