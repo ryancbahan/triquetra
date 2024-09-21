@@ -49,7 +49,6 @@ void LongDelayProcessor::process(const std::array<float, 4>& longDelayTimes,
                                  std::array<float, 8>& longHadamardRight,
                                  float inputSampleLeft, float inputSampleRight)
 {
-    
     // Define the attenuation factor based on the number of delay taps (4 in this case)
     const float attenuationFactor = 1.0f / sqrt(4.0f);
 
@@ -57,22 +56,23 @@ void LongDelayProcessor::process(const std::array<float, 4>& longDelayTimes,
     float attenuatedInputLeft = inputSampleLeft * attenuationFactor;
     float attenuatedInputRight = inputSampleRight * attenuationFactor;
 
-    // Check for valid delay times
     for (int i = 0; i < 4; ++i)
     {
-        float baseDelayLeft = std::max(0.0, longDelayTimes[i] * sampleRate); // Ensure positive delay time
-        float baseDelayRight = std::max(0.0f, baseDelayLeft - static_cast<float>(stereoOffset)); // Ensure both arguments are float
+        // Ensure positive delay time
+        float baseDelayLeft = std::max(0.0f, longDelayTimes[i] * static_cast<float>(sampleRate)); // Ensure positive delay time
+        float baseDelayRight = std::max(0.0f, baseDelayLeft - stereoOffset); // Stereo offset is subtracted
 
-        float modulatedDelayLeft = std::max(0.0f, baseDelayLeft * (1.0f + modulationValue)); // Modulated delay must be non-negative
-        float modulatedDelayRight = std::max(0.0f, baseDelayRight * (1.0f + modulationValue));
+
+        float modulatedDelayLeft = baseDelayLeft * (1.0f + modulationValue);
+        float modulatedDelayRight = baseDelayRight * (1.0f + modulationValue);
 
         // Fetch interpolated samples from the delay buffers without feedback
         longHadamardLeft[i] = getInterpolatedSample(delayBufferLeft[i], modulatedDelayLeft);
         longHadamardRight[i] = getInterpolatedSample(delayBufferRight[i], modulatedDelayRight);
 
-        // Ensure we are processing valid values (not denormals)
-        longHadamardLeft[i] = clearDenormals(longHadamardLeft[i]);
-        longHadamardRight[i] = clearDenormals(longHadamardRight[i]);
+        // Apply all-pass filtering for diffusion
+        longHadamardLeft[i] = allPassFiltersLong[i].processSample(longHadamardLeft[i]);
+        longHadamardRight[i] = allPassFiltersLong[i].processSample(longHadamardRight[i]);
 
         // Apply attenuation to the input signal for bloom-related taps
         longHadamardLeft[i + 4] = attenuatedInputLeft;
@@ -82,8 +82,8 @@ void LongDelayProcessor::process(const std::array<float, 4>& longDelayTimes,
     // Update the delay buffer with the attenuated input sample (no feedback yet)
     for (int i = 0; i < 4; ++i)
     {
-        delayBufferLeft[i][writePosition] = clearDenormals(attenuatedInputLeft); // Clear denormals
-        delayBufferRight[i][writePosition] = clearDenormals(attenuatedInputRight); // Clear denormals
+        delayBufferLeft[i][writePosition] = attenuatedInputLeft;
+        delayBufferRight[i][writePosition] = attenuatedInputRight;
     }
 
     // Increment write position in circular delay buffer
