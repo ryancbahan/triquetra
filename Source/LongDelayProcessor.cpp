@@ -16,20 +16,29 @@ void LongDelayProcessor::prepare(double newSampleRate, int numChannels, float ne
 
     juce::dsp::ProcessSpec spec{ sampleRate, static_cast<juce::uint32>(512), static_cast<juce::uint32>(numChannels) };
 
+    // Prepare the all-pass filters for diffusion
     for (auto& filter : allPassFiltersLong)
+    {
+        filter.reset();
         filter.prepare(spec);
+    }
 
+    // Prepare and reset the lowpass filters
+    reverbWashLowpassFilterLeft.reset();
+    reverbWashLowpassFilterRight.reset();
     reverbWashLowpassFilterLeft.prepare(spec);
     reverbWashLowpassFilterRight.prepare(spec);
 
+    // Set lowpass coefficients
     *reverbWashLowpassFilterLeft.coefficients = *juce::dsp::IIR::Coefficients<float>::makeLowPass(sampleRate, 12000.0f);
     *reverbWashLowpassFilterRight.coefficients = *juce::dsp::IIR::Coefficients<float>::makeLowPass(sampleRate, 12000.0f);
 
+    // Resize delay buffers and initialize to zero
     delayBufferSize = static_cast<int>(sampleRate * 2.0); // 2 seconds of delay buffer
     delayBufferLeft.resize(8, std::vector<float>(delayBufferSize, 0.0f));
     delayBufferRight.resize(8, std::vector<float>(delayBufferSize, 0.0f));
 
-    writePosition = 0;
+    writePosition = 0; // Initialize write position for circular buffer
 }
 
 void LongDelayProcessor::process(const std::array<float, 4>& longDelayTimes,
@@ -40,6 +49,7 @@ void LongDelayProcessor::process(const std::array<float, 4>& longDelayTimes,
                                  std::array<float, 8>& longHadamardRight,
                                  float inputSampleLeft, float inputSampleRight)
 {
+    
     // Define the attenuation factor based on the number of delay taps (4 in this case)
     const float attenuationFactor = 1.0f / sqrt(4.0f);
 
@@ -47,17 +57,22 @@ void LongDelayProcessor::process(const std::array<float, 4>& longDelayTimes,
     float attenuatedInputLeft = inputSampleLeft * attenuationFactor;
     float attenuatedInputRight = inputSampleRight * attenuationFactor;
 
+    // Check for valid delay times
     for (int i = 0; i < 4; ++i)
     {
-        float baseDelayLeft = longDelayTimes[i] * sampleRate;
-        float baseDelayRight = baseDelayLeft - stereoOffset;
+        float baseDelayLeft = std::max(0.0, longDelayTimes[i] * sampleRate); // Ensure positive delay time
+        float baseDelayRight = std::max(0.0f, baseDelayLeft - static_cast<float>(stereoOffset)); // Ensure both arguments are float
 
-        float modulatedDelayLeft = baseDelayLeft * (1.0f + modulationValue);
-        float modulatedDelayRight = baseDelayRight * (1.0f + modulationValue);
+        float modulatedDelayLeft = std::max(0.0f, baseDelayLeft * (1.0f + modulationValue)); // Modulated delay must be non-negative
+        float modulatedDelayRight = std::max(0.0f, baseDelayRight * (1.0f + modulationValue));
 
         // Fetch interpolated samples from the delay buffers without feedback
         longHadamardLeft[i] = getInterpolatedSample(delayBufferLeft[i], modulatedDelayLeft);
         longHadamardRight[i] = getInterpolatedSample(delayBufferRight[i], modulatedDelayRight);
+
+        // Ensure we are processing valid values (not denormals)
+        longHadamardLeft[i] = clearDenormals(longHadamardLeft[i]);
+        longHadamardRight[i] = clearDenormals(longHadamardRight[i]);
 
         // Apply attenuation to the input signal for bloom-related taps
         longHadamardLeft[i + 4] = attenuatedInputLeft;
@@ -67,14 +82,13 @@ void LongDelayProcessor::process(const std::array<float, 4>& longDelayTimes,
     // Update the delay buffer with the attenuated input sample (no feedback yet)
     for (int i = 0; i < 4; ++i)
     {
-        delayBufferLeft[i][writePosition] = attenuatedInputLeft;
-        delayBufferRight[i][writePosition] = attenuatedInputRight;
+        delayBufferLeft[i][writePosition] = clearDenormals(attenuatedInputLeft); // Clear denormals
+        delayBufferRight[i][writePosition] = clearDenormals(attenuatedInputRight); // Clear denormals
     }
 
     // Increment write position in circular delay buffer
     writePosition = (writePosition + 1) % delayBufferSize;
 }
-
 
 
 float LongDelayProcessor::getInterpolatedSample(const std::vector<float>& buffer, float delayInSamples)
@@ -83,7 +97,8 @@ float LongDelayProcessor::getInterpolatedSample(const std::vector<float>& buffer
     float fraction = delayInSamples - static_cast<int>(delayInSamples);
     int nextPosition = (readPosition + 1) % delayBufferSize;
 
-    return buffer[readPosition] + fraction * (buffer[nextPosition] - buffer[readPosition]);
+    // Return interpolated value, ensuring no denormals
+    return clearDenormals(buffer[readPosition] + fraction * (buffer[nextPosition] - buffer[readPosition]));
 }
 
 std::array<float, 8> LongDelayProcessor::applyHadamardMixing(const std::array<float, 8>& input)
@@ -99,3 +114,10 @@ std::array<float, 8> LongDelayProcessor::applyHadamardMixing(const std::array<fl
     output[7] = input[0] - input[1] + input[2] + input[3] - input[4] - input[5] + input[6] - input[7];
     return output;
 }
+
+inline float LongDelayProcessor::clearDenormals(float value)
+{
+    // Ensure small values (denormals) don't cause performance issues
+    return std::abs(value) < 1.0e-15f ? 0.0f : value;
+}
+

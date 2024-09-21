@@ -34,7 +34,7 @@ private:
 
     std::vector<std::vector<float>> delayBufferLeft;
     std::vector<std::vector<float>> delayBufferRight;
-
+    inline float clearDenormals(float value);
     float getInterpolatedSample(const std::vector<float>& buffer, float delayInSamples);
     void updateDelayBuffer(float inputLeft, float inputRight);
     std::array<float, 8> applyHadamardMixing(const std::array<float, 8>& input);
