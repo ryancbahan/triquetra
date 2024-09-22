@@ -33,13 +33,13 @@ void LongDelayProcessor::prepare(double newSampleRate, int numChannels, float ne
         filter.prepare(spec);
     }
 
-    reverbWashLowpassFilterLeft.reset();
-    reverbWashLowpassFilterRight.reset();
-    reverbWashLowpassFilterLeft.prepare(spec);
-    reverbWashLowpassFilterRight.prepare(spec);
-
-    *reverbWashLowpassFilterLeft.coefficients = *juce::dsp::IIR::Coefficients<float>::makeLowPass(sampleRate, 12000.0f);
-    *reverbWashLowpassFilterRight.coefficients = *juce::dsp::IIR::Coefficients<float>::makeLowPass(sampleRate, 12000.0f);
+//    reverbWashLowpassFilterLeft.reset();
+//    reverbWashLowpassFilterRight.reset();
+//    reverbWashLowpassFilterLeft.prepare(spec);
+//    reverbWashLowpassFilterRight.prepare(spec);
+//
+//    *reverbWashLowpassFilterLeft.coefficients = *juce::dsp::IIR::Coefficients<float>::makeLowPass(sampleRate, 12000.0f);
+//    *reverbWashLowpassFilterRight.coefficients = *juce::dsp::IIR::Coefficients<float>::makeLowPass(sampleRate, 12000.0f);
 
     delayBufferSize = static_cast<int>(sampleRate * 2.0);
     delayBufferLeft.resize(8, std::vector<float>(delayBufferSize, 0.0f));
@@ -125,8 +125,8 @@ void LongDelayProcessor::process(const std::array<float, 4>& longDelayTimes,
         longHadamardRight[i] *= attenuationFactor;
 
         // Apply lowpass filtering
-        longHadamardLeft[i] = reverbWashLowpassFilterLeft.processSample(longHadamardLeft[i]);
-        longHadamardRight[i] = reverbWashLowpassFilterRight.processSample(longHadamardRight[i]);
+//        longHadamardLeft[i] = reverbWashLowpassFilterLeft.processSample(longHadamardLeft[i]);
+//        longHadamardRight[i] = reverbWashLowpassFilterRight.processSample(longHadamardRight[i]);
         
         // Calculate feedback using the global feedback control
         longFeedbackLeft[i] = juce::jlimit(-0.95f, 0.95f, (longHadamardLeft[i] + longHadamardLeft[i + 4]) * feedback);

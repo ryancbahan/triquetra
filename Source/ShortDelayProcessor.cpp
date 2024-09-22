@@ -17,12 +17,12 @@ void ShortDelayProcessor::prepare(double newSampleRate, int numChannels, float n
     for (auto& filter : allPassFiltersShort)
         filter.prepare(spec);
 
-    reverbWashLowpassFilterLeft.prepare(spec);
-    reverbWashLowpassFilterRight.prepare(spec);
-
-    // Set lowpass filter coefficients
-    *reverbWashLowpassFilterLeft.coefficients = *juce::dsp::IIR::Coefficients<float>::makeLowPass(sampleRate, 12000.0f);
-    *reverbWashLowpassFilterRight.coefficients = *juce::dsp::IIR::Coefficients<float>::makeLowPass(sampleRate, 12000.0f);
+//    reverbWashLowpassFilterLeft.prepare(spec);
+//    reverbWashLowpassFilterRight.prepare(spec);
+//
+//    // Set lowpass filter coefficients
+//    *reverbWashLowpassFilterLeft.coefficients = *juce::dsp::IIR::Coefficients<float>::makeLowPass(sampleRate, 12000.0f);
+//    *reverbWashLowpassFilterRight.coefficients = *juce::dsp::IIR::Coefficients<float>::makeLowPass(sampleRate, 12000.0f);
 
     // Initialize delay buffers
     delayBufferSize = static_cast<int>(sampleRate * 2.0); // 2 seconds of delay buffer
@@ -64,8 +64,8 @@ void ShortDelayProcessor::process(const std::array<float, 8>& shortDelayTimes,
         shortDelayOutputLeft[i] = diffusionAmount * allPassFiltersShort[i].processSample(shortDelayOutputLeft[i]);
         shortDelayOutputRight[i] = diffusionAmount * allPassFiltersShort[i].processSample(shortDelayOutputRight[i]);
 
-        shortDelayOutputLeft[i] = reverbWashLowpassFilterLeft.processSample(shortDelayOutputLeft[i]);
-        shortDelayOutputRight[i] = reverbWashLowpassFilterRight.processSample(shortDelayOutputRight[i]);
+//        shortDelayOutputLeft[i] = reverbWashLowpassFilterLeft.processSample(shortDelayOutputLeft[i]);
+//        shortDelayOutputRight[i] = reverbWashLowpassFilterRight.processSample(shortDelayOutputRight[i]);
         
         // Update the delay buffer for future feedback (left and right)
         delayBufferLeft[i][writePosition] = shortDelayOutputLeft[i];
