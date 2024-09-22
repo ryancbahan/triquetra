@@ -127,18 +127,12 @@ void LongDelayProcessor::process(const std::array<float, 4>& longDelayTimes,
         // Apply lowpass filtering
         longHadamardLeft[i] = reverbWashLowpassFilterLeft.processSample(longHadamardLeft[i]);
         longHadamardRight[i] = reverbWashLowpassFilterRight.processSample(longHadamardRight[i]);
-    }
-
-    // Calculate feedback using the global feedback control
-    for (int i = 0; i < 4; ++i)
-    {
+        
+        // Calculate feedback using the global feedback control
         longFeedbackLeft[i] = juce::jlimit(-0.95f, 0.95f, (longHadamardLeft[i] + longHadamardLeft[i + 4]) * feedback);
         longFeedbackRight[i] = juce::jlimit(-0.95f, 0.95f, (longHadamardRight[i] + longHadamardRight[i + 4]) * feedback);
-    }
-
-    // Update the delay buffer with the attenuated input sample and feedback
-    for (int i = 0; i < 4; ++i)
-    {
+        
+        // Update the delay buffer with the attenuated input sample and feedback
         delayBufferLeft[i][writePosition] = attenuatedInputLeft + longFeedbackLeft[i];
         delayBufferRight[i][writePosition] = attenuatedInputRight + longFeedbackRight[i];
     }

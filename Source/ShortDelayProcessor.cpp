@@ -66,11 +66,8 @@ void ShortDelayProcessor::process(const std::array<float, 8>& shortDelayTimes,
 
         shortDelayOutputLeft[i] = reverbWashLowpassFilterLeft.processSample(shortDelayOutputLeft[i]);
         shortDelayOutputRight[i] = reverbWashLowpassFilterRight.processSample(shortDelayOutputRight[i]);
-    }
-
-    // Update the delay buffer for future feedback (left and right)
-    for (int i = 0; i < 8; ++i)
-    {
+        
+        // Update the delay buffer for future feedback (left and right)
         delayBufferLeft[i][writePosition] = shortDelayOutputLeft[i];
         delayBufferRight[i][writePosition] = shortDelayOutputRight[i];
     }
