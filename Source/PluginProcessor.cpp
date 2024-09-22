@@ -285,51 +285,6 @@ float TriquetraAudioProcessor::applyGain(float sample, float gainFactor)
     return sample * gainFactor;
 }
 
-void TriquetraAudioProcessor::updateLowpassCoefficients()
-{
-    float cutoffFrequency = 15000.0f * lowpassFilterRate;
-    auto coefficients = juce::dsp::IIR::Coefficients<float>::makeLowPass(getSampleRate(), cutoffFrequency, 0.707f);
-    lowpassFilterLeft.coefficients = coefficients;
-    lowpassFilterRight.coefficients = coefficients;
-}
-
-float TriquetraAudioProcessor::getInterpolatedSample(float delayTime)
-{
-    float delayTimeInSamples = delayTime * getSampleRate();
-    int readPosition = static_cast<int>(writePosition - delayTimeInSamples + delayBufferSize) % delayBufferSize;
-    
-    float fraction = delayTimeInSamples - static_cast<int>(delayTimeInSamples);
-    int nextSample = (readPosition + 1) % delayBufferSize;
-
-    // Linear interpolation
-    return delayBuffer[readPosition] + fraction * (delayBuffer[nextSample] - delayBuffer[readPosition]);
-}
-
-
-
-float TriquetraAudioProcessor::lowpassFilter(float input, float cutoff, float sampleRate)
-{
-    static float lastOutput = 0.0f;
-    float alpha = 2.0f * juce::MathConstants<float>::pi * cutoff / sampleRate;
-    float output = lastOutput + alpha * (input - lastOutput);
-    lastOutput = output;
-    return output;
-}
-
-float TriquetraAudioProcessor::highpassFilter(float input, float cutoff, float sampleRate)
-{
-    static float lastInput = 0.0f, lastOutput = 0.0f;
-    float rc = 1.0f / (cutoff * 2.0f * juce::MathConstants<float>::pi);
-    float dt = 1.0f / sampleRate;
-    float alpha = dt / (rc + dt);
-
-    float output = alpha * (lastOutput + input - lastInput);  // High-pass filter equation
-    lastInput = input;
-    lastOutput = output;
-
-    return output;
-}
-
 void TriquetraAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midiMessages)
 {
     juce::ScopedNoDenormals noDenormals;
@@ -344,6 +299,10 @@ void TriquetraAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juc
 
     float sampleRate = static_cast<float>(getSampleRate());
     const float stereoOffset = 0.02f * sampleRate;
+
+    // Control feedback gain to avoid excessive accumulation
+    const float feedbackGain = 0.7f;  // Keep feedback under control
+    const float matrixScaling = 0.8f; // Control matrix scaling
 
     for (int sample = 0; sample < buffer.getNumSamples(); ++sample)
     {
@@ -363,41 +322,63 @@ void TriquetraAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juc
         std::array<float, 8> longDelayOutputRight = { 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f };
         std::array<float, 8> reverbOutputLeft = { 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f };
         std::array<float, 8> reverbOutputRight = { 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f };
-        
+
+        // Increase modulation depth for more extreme effect
+        float extremeModulationDepth = modulationDepth * 2.0f;
+
         // Update modulation
         modulationPhase += modulationFrequency / sampleRate;
         if (modulationPhase >= 1.0f) modulationPhase -= 1.0f;
-        float modulationValue = std::sin(2.0f * juce::MathConstants<float>::pi * modulationPhase) * modulationDepth;
+        float modulationValue = std::sin(2.0f * juce::MathConstants<float>::pi * modulationPhase) * extremeModulationDepth;
 
-        // Define LFO-modulated matrix for cross-feedback
+        // Define LFO-modulated matrix for cross-feedback with controlled scaling
         std::array<std::array<float, 8>, 4> shortToLongMatrix;
         std::array<std::array<float, 8>, 4> shortToReverbMatrix;
         std::array<std::array<float, 4>, 8> longToShortMatrix;
         std::array<std::array<float, 8>, 8> longToReverbMatrix;
 
-        // Initialize LFO-modulated matrix values (simple sine modulation)
+        // Apply controlled scaling to matrix values
         for (int i = 0; i < 4; ++i) {
             for (int j = 0; j < 8; ++j) {
-                float lfoMod = 0.5f + 0.5f * std::sin(2.0f * juce::MathConstants<float>::pi * (modulationPhase + i * 0.1f + j * 0.05f));
-                shortToLongMatrix[i][j] = lfoMod;
-                shortToReverbMatrix[i][j] = lfoMod * 0.8f; // slightly lower influence
+                float lfoMod = 0.5f + 0.75f * std::sin(2.0f * juce::MathConstants<float>::pi * (modulationPhase + i * 0.1f + j * 0.05f));
+                shortToLongMatrix[i][j] = lfoMod * 1.5f * matrixScaling;
+                shortToReverbMatrix[i][j] = lfoMod * 1.2f * matrixScaling;
             }
         }
 
         for (int i = 0; i < 8; ++i) {
             for (int j = 0; j < 4; ++j) {
-                float lfoMod = 0.5f + 0.5f * std::sin(2.0f * juce::MathConstants<float>::pi * (modulationPhase + i * 0.07f + j * 0.03f));
-                longToShortMatrix[i][j] = lfoMod;
+                float lfoMod = 0.5f + 0.75f * std::sin(2.0f * juce::MathConstants<float>::pi * (modulationPhase + i * 0.07f + j * 0.03f));
+                longToShortMatrix[i][j] = lfoMod * 1.5f * matrixScaling;
             }
             for (int j = 0; j < 8; ++j) {
-                float lfoMod = 0.5f + 0.5f * std::sin(2.0f * juce::MathConstants<float>::pi * (modulationPhase + i * 0.08f + j * 0.06f));
-                longToReverbMatrix[i][j] = lfoMod * 0.9f; // slightly attenuate
+                float lfoMod = 0.5f + 0.75f * std::sin(2.0f * juce::MathConstants<float>::pi * (modulationPhase + i * 0.08f + j * 0.06f));
+                longToReverbMatrix[i][j] = lfoMod * 1.8f * matrixScaling;
             }
         }
 
+        // Create arrays for scaled feedback values
+        std::array<float, 4> scaledShortFeedbackLeft;
+        std::array<float, 4> scaledShortFeedbackRight;
+        std::array<float, 8> scaledLongFeedbackLeft;
+        std::array<float, 8> scaledLongFeedbackRight;
+
+        // Scale the short feedback arrays
+        for (int i = 0; i < 4; ++i) {
+            scaledShortFeedbackLeft[i] = shortFeedbackLeft[i] * feedbackGain;
+            scaledShortFeedbackRight[i] = shortFeedbackRight[i] * feedbackGain;
+        }
+
+        // Scale the long feedback arrays
+        for (int i = 0; i < 8; ++i) {
+            scaledLongFeedbackLeft[i] = longFeedbackLeft[i] * feedbackGain;
+            scaledLongFeedbackRight[i] = longFeedbackRight[i] * feedbackGain;
+        }
+
         // Process delays and feedback
-        shortDelayProcessor.process(shortDelayTimes, shortFeedbackLeft, shortFeedbackRight, modulationValue, stereoOffset, shortDelayOutputLeft, shortDelayOutputRight, processedInputLeft, processedInputRight);
-        longDelayProcessor.process(longDelayTimes, longFeedbackLeft, longFeedbackRight, modulationValue, stereoOffset, longDelayOutputLeft, longDelayOutputRight, processedInputLeft, processedInputRight);
+        shortDelayProcessor.process(shortDelayTimes, scaledShortFeedbackLeft, scaledShortFeedbackRight, modulationValue, stereoOffset, shortDelayOutputLeft, shortDelayOutputRight, processedInputLeft, processedInputRight);
+
+        longDelayProcessor.process(longDelayTimes, scaledLongFeedbackLeft, scaledLongFeedbackRight, modulationValue, stereoOffset, longDelayOutputLeft, longDelayOutputRight, processedInputLeft, processedInputRight);
 
         reverbProcessor.process(shortDelayOutputLeft, shortDelayOutputRight,
                                 longDelayOutputLeft, longDelayOutputRight,
@@ -437,7 +418,7 @@ void TriquetraAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juc
         buffer.setSample(1, sample, outputSampleRight);
 
         // Update delay buffer for feedback
-        delayBuffer[writePosition] = (outputSampleLeft + outputSampleRight) * 0.5f;
+        delayBuffer[writePosition] = (outputSampleLeft + outputSampleRight) * 0.5f * feedbackGain; // Add feedback control here
         writePosition = (writePosition + 1) % delayBufferSize;
     }
 }
