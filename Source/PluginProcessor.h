@@ -29,6 +29,8 @@ public:
     juce::AudioProcessorValueTreeState parameters;
     juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout();
     std::atomic<float>* mixParameter = nullptr;
+    std::atomic<float>* delayTimeParameter = nullptr;
+    float delayTimeSmoothed = 0.002f;  // Initial value should match the default delayTimeParameter value
 
     void prepareToPlay (double sampleRate, int samplesPerBlock) override;
     void releaseResources() override;
@@ -92,6 +94,8 @@ private:
     std::array<float, 8> modulatedShortDelayTimes;
     std::array<float, 8> modulatedLongDelayTimes;
     
+    void updateShortDelayTimes(float delayTime);
+
     std::tuple<float, float, float, float> processAndSumSignals(
         const std::array<float, 8>& shortDelayOutputLeft,
         const std::array<float, 8>& shortDelayOutputRight,

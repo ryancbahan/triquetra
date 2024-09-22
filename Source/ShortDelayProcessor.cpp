@@ -25,7 +25,7 @@ void ShortDelayProcessor::prepare(double newSampleRate, int numChannels, float n
 //    *reverbWashLowpassFilterRight.coefficients = *juce::dsp::IIR::Coefficients<float>::makeLowPass(sampleRate, 12000.0f);
 
     // Initialize delay buffers
-    delayBufferSize = static_cast<int>(sampleRate * 2.0); // 2 seconds of delay buffer
+    delayBufferSize = static_cast<int>(sampleRate * 4.0); // 2 seconds of delay buffer
     delayBufferLeft.resize(8, std::vector<float>(delayBufferSize, 0.0f));
     delayBufferRight.resize(8, std::vector<float>(delayBufferSize, 0.0f));
 
