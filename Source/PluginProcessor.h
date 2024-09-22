@@ -30,7 +30,7 @@ public:
     juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout();
     std::atomic<float>* mixParameter = nullptr;
     std::atomic<float>* delayTimeParameter = nullptr;
-    float delayTimeSmoothed = 0.002f;  // Initial value should match the default delayTimeParameter value
+    juce::SmoothedValue<float> delayTimeSmoothed;
 
     void prepareToPlay (double sampleRate, int samplesPerBlock) override;
     void releaseResources() override;

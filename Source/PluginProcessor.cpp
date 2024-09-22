@@ -32,8 +32,7 @@ TriquetraAudioProcessor::TriquetraAudioProcessor()
     previousInputLeft(0.0f),
     previousOutputLeft(0.0f),
     previousInputRight(0.0f),
-    previousOutputRight(0.0f),
-    delayTimeSmoothed(0.002f)
+    previousOutputRight(0.0f)
 {
     // Initialize short delay times (prime number ratios for less repetitive echoes)
     shortDelayTimes = {0.0443f * 2, 0.0531f, 0.0667f, 0.0798f * 2, 0.0143f, 0.0531f * 2, 0.09 * 2, 0.12};
@@ -205,6 +204,8 @@ void TriquetraAudioProcessor::prepareToPlay(double sampleRate, int samplesPerBlo
     shortFeedbackRight.fill(0.0f);
     longFeedbackLeft.fill(0.0f);
     longFeedbackRight.fill(0.0f);
+    
+    delayTimeSmoothed.reset(sampleRate, 0.005f); // Set the smoothing time to, say, 50ms
 
     // Reset processors (e.g., filters and delay lines)
     reverbProcessor.prepare(sampleRate, samplesPerBlock);
@@ -244,7 +245,8 @@ void TriquetraAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juc
 
     // Get and smooth delayTimeParameter to avoid abrupt changes
     float targetDelayTimeValue = delayTimeParameter->load();
-    delayTimeSmoothed = 0.99f * delayTimeSmoothed + 0.01f * targetDelayTimeValue;  // Smoothing
+    delayTimeSmoothed.setTargetValue(targetDelayTimeValue);  // Set the target value
+    float smoothedDelayTime = delayTimeSmoothed.getNextValue();  // Get the smoothed value
 
     float mixValue = mixParameter->load();
 
@@ -258,13 +260,13 @@ void TriquetraAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juc
     const float stereoOffset = 0.02f * sampleRate;
 
     // Dynamically calculate longDelayTimes based on smoothed delay time
-    longDelayTimes[0] = delayTimeSmoothed;  // First value is the smoothed delay time
+    longDelayTimes[0] = smoothedDelayTime;  // First value is the smoothed delay time
     for (int i = 1; i < longDelayTimes.size(); ++i)
     {
         longDelayTimes[i] = longDelayTimes[i - 1] * 1.25f;  // Each subsequent value is 25% more
     }
     
-    updateShortDelayTimes(targetDelayTimeValue);
+    updateShortDelayTimes(smoothedDelayTime);
 
     // Ensure that all delay times are within valid bounds
     for (float& delayTime : longDelayTimes)
