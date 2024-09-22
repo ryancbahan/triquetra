@@ -17,7 +17,8 @@ public:
                                       float modulationValue, float stereoOffset,
                                       std::array<float, 8>& shortDelayOutputLeft,
                                       std::array<float, 8>& shortDelayOutputRight,
-                 float inputSampleLeft, float inputSampleRight);
+                                      float inputSampleLeft, float inputSampleRight,
+                                      float currentFeedback);
 
 private:
     float getInterpolatedSample(const std::vector<float>& buffer, float delayInSamples);

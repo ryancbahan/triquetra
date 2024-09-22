@@ -55,9 +55,10 @@ void ShortDelayProcessor::process(const std::array<float, 8>& shortDelayTimes,
                                   float modulationValue, float stereoOffset,
                                   std::array<float, 8>& shortDelayOutputLeft,
                                   std::array<float, 8>& shortDelayOutputRight,
-                                  float inputSampleLeft, float inputSampleRight)
+                                  float inputSampleLeft, float inputSampleRight,
+                                  float currentFeedback) 
 {
-    feedback = juce::jlimit(0.0f, 1.0f, feedback);
+    currentFeedback = juce::jlimit(0.0f, 1.0f, currentFeedback);  // Ensure feedback is in the valid range
 
     for (int i = 0; i < 8; ++i)
     {
@@ -68,8 +69,8 @@ void ShortDelayProcessor::process(const std::array<float, 8>& shortDelayTimes,
         float modulatedDelayRight = baseDelayRight * (1.0f + modulationValue);
 
         // Fetch interpolated samples from delay buffer (output will be 100% wet)
-        shortDelayOutputLeft[i] = getInterpolatedSample(delayBufferLeft[i], modulatedDelayLeft) + shortFeedbackLeft[i] * feedback;
-        shortDelayOutputRight[i] = getInterpolatedSample(delayBufferRight[i], modulatedDelayRight) + shortFeedbackRight[i] * feedback;
+        shortDelayOutputLeft[i] = getInterpolatedSample(delayBufferLeft[i], modulatedDelayLeft) + shortFeedbackLeft[i] * currentFeedback;
+        shortDelayOutputRight[i] = getInterpolatedSample(delayBufferRight[i], modulatedDelayRight) + shortFeedbackRight[i] * currentFeedback;
 
         // Apply all-pass filtering and update feedback
         shortDelayOutputLeft[i] = allPassFiltersShort[i].processSample(shortDelayOutputLeft[i]);
