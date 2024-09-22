@@ -41,7 +41,7 @@ void LongDelayProcessor::prepare(double newSampleRate, int numChannels, float ne
 //    *reverbWashLowpassFilterLeft.coefficients = *juce::dsp::IIR::Coefficients<float>::makeLowPass(sampleRate, 12000.0f);
 //    *reverbWashLowpassFilterRight.coefficients = *juce::dsp::IIR::Coefficients<float>::makeLowPass(sampleRate, 12000.0f);
 
-    delayBufferSize = static_cast<int>(sampleRate * 2.0);
+    delayBufferSize = static_cast<int>(sampleRate * 4.0);
     delayBufferLeft.resize(8, std::vector<float>(delayBufferSize, 0.0f));
     delayBufferRight.resize(8, std::vector<float>(delayBufferSize, 0.0f));
 

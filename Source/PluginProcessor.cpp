@@ -32,7 +32,8 @@ TriquetraAudioProcessor::TriquetraAudioProcessor()
     previousInputLeft(0.0f),
     previousOutputLeft(0.0f),
     previousInputRight(0.0f),
-    previousOutputRight(0.0f)
+    previousOutputRight(0.0f),
+    delayTimeSmoothed(0.002f)
 {
     // Initialize short delay times (prime number ratios for less repetitive echoes)
     shortDelayTimes = {0.0443f * 2, 0.0531f, 0.0667f, 0.0798f * 2, 0.0143f, 0.0531f * 2, 0.09 * 2, 0.12};
@@ -178,7 +179,7 @@ bool TriquetraAudioProcessor::isBusesLayoutSupported (const BusesLayout& layouts
 void TriquetraAudioProcessor::prepareToPlay(double sampleRate, int samplesPerBlock)
 {
     // Prepare the delay buffer
-    const int maxDelaySamples = static_cast<int>(sampleRate * 6.1); // 6 seconds of delay
+    const int maxDelaySamples = static_cast<int>(sampleRate * 4.0); // 4 seconds of delay
     delayBufferSize = maxDelaySamples;
     delayBuffer.resize(delayBufferSize, 0.0f);
     writePosition = 0;
@@ -224,10 +225,12 @@ void TriquetraAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juc
     juce::ScopedNoDenormals noDenormals;
     auto totalNumInputChannels = getTotalNumInputChannels();
     auto totalNumOutputChannels = getTotalNumOutputChannels();
-    
-    float mixValue = mixParameter->load();
-    float delayTimeValue = delayTimeParameter->load();
 
+    // Get and smooth delayTimeParameter to avoid abrupt changes
+    float targetDelayTimeValue = delayTimeParameter->load();
+    delayTimeSmoothed = 0.99f * delayTimeSmoothed + 0.01f * targetDelayTimeValue;  // Smoothing
+
+    float mixValue = mixParameter->load();
 
     if (totalNumOutputChannels < 2) return;
 
@@ -238,7 +241,19 @@ void TriquetraAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juc
     float sampleRate = static_cast<float>(getSampleRate());
     const float stereoOffset = 0.02f * sampleRate;
 
-    // Control feedback gain to avoid excessive accumulation
+    // Dynamically calculate longDelayTimes based on smoothed delay time
+    longDelayTimes[0] = delayTimeSmoothed;  // First value is the smoothed delay time
+    for (int i = 1; i < longDelayTimes.size(); ++i)
+    {
+        longDelayTimes[i] = longDelayTimes[i - 1] * 1.25f;  // Each subsequent value is 25% more
+    }
+
+    // Ensure that all delay times are within valid bounds
+    for (float& delayTime : longDelayTimes)
+    {
+        delayTime = std::min(delayTime, 4.0f);  // Ensure delay time does not exceed the buffer length (4 seconds)
+    }
+
     const float feedbackGain = 0.7f;
 
     for (int sample = 0; sample < buffer.getNumSamples(); ++sample)
@@ -273,6 +288,7 @@ void TriquetraAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juc
         writePosition = (writePosition + 1) % delayBufferSize;
     }
 }
+
 
 
 std::tuple<float, float, float, float> TriquetraAudioProcessor::processAndSumSignals(
