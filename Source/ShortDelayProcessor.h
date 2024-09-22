@@ -24,7 +24,8 @@ private:
     float getInterpolatedSample(const std::vector<float>& buffer, float delayInSamples);
     void updateDelayBuffer(float inputLeft, float inputRight);
     std::array<float, 8> applyHadamardMixing(const std::array<float, 8>& input);
-
+    float modulationFrequency = 2.66;
+     float modulationPhase;
     double sampleRate = 44100.0;
     float feedback = 0.0f;
     float diffusionAmount = 0.0f;
