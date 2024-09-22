@@ -31,6 +31,7 @@ public:
     std::atomic<float>* mixParameter = nullptr;
     std::atomic<float>* delayTimeParameter = nullptr;
     std::atomic<float>* feedbackParameter = nullptr;
+    std::atomic<float>* depthParameter = nullptr;
 
     juce::SmoothedValue<float> delayTimeSmoothed;
 
@@ -87,7 +88,8 @@ private:
     float previousInputRight = 0.0f;
     float previousOutputRight = 0.0f;
     float modulationFrequency;
-
+    float modulationValue = 0.0f; 
+    void updateModulation(float sampleRate, float depthValue);
     std::vector<float> delayBuffer;
     int delayBufferSize;
     int writePosition;

@@ -34,6 +34,12 @@ TriquetraAudioProcessor::TriquetraAudioProcessor()
     previousInputRight(0.0f),
     previousOutputRight(0.0f)
 {
+    
+    modulationFrequency = 0.5f;  // This is the LFO frequency (can be user-defined)
+    modulationDepth = 1.5f;      // This is the depth of modulation (can be user-defined)
+    modulationPhase = 0.0f;       // Initial phase of the LFO
+    float modulationValue = 0.0f;
+    
     // Initialize short delay times (prime number ratios for less repetitive echoes)
     shortDelayTimes = {0.0443f * 2, 0.0531f, 0.0667f, 0.0798f * 2, 0.0143f, 0.0531f * 2, 0.09 * 2, 0.12};
 
@@ -61,10 +67,24 @@ TriquetraAudioProcessor::TriquetraAudioProcessor()
     mixParameter = parameters.getRawParameterValue("mix");
     delayTimeParameter = parameters.getRawParameterValue("delayTime");
     feedbackParameter = parameters.getRawParameterValue("feedback");
+    depthParameter = parameters.getRawParameterValue("depth");
 }
 
 TriquetraAudioProcessor::~TriquetraAudioProcessor()
 {
+}
+
+void TriquetraAudioProcessor::updateModulation(float sampleRate, float depthValue)
+{
+    // Increment phase for the LFO
+    modulationPhase += modulationFrequency / sampleRate;
+    
+    // Keep phase in the [0, 1) range
+    if (modulationPhase >= 1.0f)
+        modulationPhase -= 1.0f;
+
+    // Calculate the modulation value using depth parameter
+    modulationValue = std::sin(2.0f * juce::MathConstants<float>::pi * modulationPhase) * depthValue;
 }
 
 juce::AudioProcessorValueTreeState::ParameterLayout TriquetraAudioProcessor::createParameterLayout()
@@ -77,11 +97,15 @@ juce::AudioProcessorValueTreeState::ParameterLayout TriquetraAudioProcessor::cre
     
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
         juce::ParameterID("delayTime", 2), "Delay time",
-        juce::NormalisableRange<float>(0.0f, 2.0f), 0.5f));
+        juce::NormalisableRange<float>(0.1f, 2.0f), 0.5f));
     
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
         juce::ParameterID("feedback", 3), "Feedback",
         juce::NormalisableRange<float>(0.0f, 1.0f), 0.5f));
+    
+    params.push_back(std::make_unique<juce::AudioParameterFloat>(
+        juce::ParameterID("depth", 4), "Depth",
+        juce::NormalisableRange<float>(0.0f, 7.0f), 0.5f));
     
     return { params.begin(), params.end() };
 }
@@ -257,6 +281,9 @@ void TriquetraAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juc
 
     float mixValue = mixParameter->load();
     float feedbackValue = feedbackParameter->load();
+    float depthValue = depthParameter->load();
+    
+    updateModulation(getSampleRate(), depthValue);
 
     if (totalNumOutputChannels < 2) return;
 
@@ -290,13 +317,13 @@ void TriquetraAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juc
         float inputSampleRight = totalNumInputChannels > 1 ? buffer.getSample(1, sample) : inputSampleLeft;
 
         // Process delays and feedback without matrix modulation
-        shortDelayProcessor.process(shortDelayTimes, shortFeedbackLeft, shortFeedbackRight, 0.0f, stereoOffset, shortDelayOutputLeft, shortDelayOutputRight, inputSampleLeft, inputSampleRight, feedbackValue);
+        shortDelayProcessor.process(shortDelayTimes, shortFeedbackLeft, shortFeedbackRight, modulationValue, stereoOffset, shortDelayOutputLeft, shortDelayOutputRight, inputSampleLeft, inputSampleRight, feedbackValue);
 
-        longDelayProcessor.process(longDelayTimes, longFeedbackLeft, longFeedbackRight, 0.0f, stereoOffset, longDelayOutputLeft, longDelayOutputRight, inputSampleLeft, inputSampleRight, feedbackValue);
+        longDelayProcessor.process(longDelayTimes, longFeedbackLeft, longFeedbackRight, modulationValue, stereoOffset, longDelayOutputLeft, longDelayOutputRight, inputSampleLeft, inputSampleRight, feedbackValue);
 
-        reverbProcessor.process(shortDelayOutputLeft, shortDelayOutputRight,
-                                longDelayOutputLeft, longDelayOutputRight,
-                                reverbOutputLeft, reverbOutputRight);
+//        reverbProcessor.process(shortDelayOutputLeft, shortDelayOutputRight,
+//                                longDelayOutputLeft, longDelayOutputRight,
+//                                reverbOutputLeft, reverbOutputRight);
 
         // Combine outputs from the 3 processors for the final mix
         auto [outputSampleLeft, outputSampleRight, wetSignalLeft, wetSignalRight] = processAndSumSignals(
