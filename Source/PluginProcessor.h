@@ -92,7 +92,7 @@ private:
     std::array<float, 8> modulatedShortDelayTimes;
     std::array<float, 8> modulatedLongDelayTimes;
     
-    std::pair<float, float> processAndSumSignals(
+    std::tuple<float, float, float, float> processAndSumSignals(
         const std::array<float, 8>& shortDelayOutputLeft,
         const std::array<float, 8>& shortDelayOutputRight,
         const std::array<float, 8>& longDelayOutputLeft,
@@ -101,6 +101,8 @@ private:
         const std::array<float, 8>& reverbOutputRight,
         float inputSampleLeft,
         float inputSampleRight,
+        float dryMix,
+        float wetMix,
         float outputGain);
 
     float globalFeedback;

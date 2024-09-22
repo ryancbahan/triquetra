@@ -249,7 +249,7 @@ void TriquetraAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juc
                                 reverbOutputLeft, reverbOutputRight);
 
         // Combine outputs from the 3 processors for the final mix
-        auto [outputSampleLeft, outputSampleRight] = processAndSumSignals(
+        auto [outputSampleLeft, outputSampleRight, wetSignalLeft, wetSignalRight] = processAndSumSignals(
             shortDelayOutputLeft, shortDelayOutputRight,
             longDelayOutputLeft, longDelayOutputRight,
             reverbOutputLeft, reverbOutputRight,
@@ -262,13 +262,13 @@ void TriquetraAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juc
         buffer.setSample(1, sample, outputSampleRight);
 
         // Update delay buffer for feedback
-        delayBuffer[writePosition] = (outputSampleLeft + outputSampleRight) * 0.5f * feedbackGain;
+        delayBuffer[writePosition] = (wetSignalLeft + wetSignalRight) * 0.5f * feedbackGain;
         writePosition = (writePosition + 1) % delayBufferSize;
     }
 }
 
 
-std::pair<float, float> TriquetraAudioProcessor::processAndSumSignals(
+std::tuple<float, float, float, float> TriquetraAudioProcessor::processAndSumSignals(
     const std::array<float, 8>& shortDelayOutputLeft,
     const std::array<float, 8>& shortDelayOutputRight,
     const std::array<float, 8>& longDelayOutputLeft,
@@ -302,7 +302,7 @@ std::pair<float, float> TriquetraAudioProcessor::processAndSumSignals(
     outputSampleLeft = juce::jlimit(-1.0f, 1.0f, outputSampleLeft);
     outputSampleRight = juce::jlimit(-1.0f, 1.0f, outputSampleRight);
 
-    return {outputSampleLeft, outputSampleRight};
+    return {outputSampleLeft, outputSampleRight, wetSignalLeft, wetSignalRight};
 }
 
 //==============================================================================
