@@ -29,8 +29,11 @@ private:
     // access the processor object that created it.
     TriquetraAudioProcessor& audioProcessor;
     juce::Slider mixParamSlider;
+    juce::Slider delayTimeParamSlider;
+    
     void setupKnob(juce::Slider& slider, juce::RangedAudioParameter* parameter,
                        int x, int y, int width, int height, const juce::String& labelText);
+    
     std::vector<std::unique_ptr<juce::Label>> sliderLabels;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (TriquetraAudioProcessorEditor)

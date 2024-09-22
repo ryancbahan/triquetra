@@ -59,6 +59,7 @@ TriquetraAudioProcessor::TriquetraAudioProcessor()
     outputGain = 1.0f;
     
     mixParameter = parameters.getRawParameterValue("mix");
+    delayTimeParameter = parameters.getRawParameterValue("delayTime");
 }
 
 TriquetraAudioProcessor::~TriquetraAudioProcessor()
@@ -72,6 +73,10 @@ juce::AudioProcessorValueTreeState::ParameterLayout TriquetraAudioProcessor::cre
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
         juce::ParameterID("mix", 1), "mix",
         juce::NormalisableRange<float>(0.0f, 1.0f), 0.5f));
+    
+    params.push_back(std::make_unique<juce::AudioParameterFloat>(
+        juce::ParameterID("delayTime", 2), "Delay time",
+        juce::NormalisableRange<float>(0.0f, 2.0f), 0.5f));
     
     return { params.begin(), params.end() };
 }
@@ -221,6 +226,8 @@ void TriquetraAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juc
     auto totalNumOutputChannels = getTotalNumOutputChannels();
     
     float mixValue = mixParameter->load();
+    float delayTimeValue = delayTimeParameter->load();
+
 
     if (totalNumOutputChannels < 2) return;
 

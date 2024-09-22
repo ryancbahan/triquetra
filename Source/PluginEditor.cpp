@@ -18,6 +18,7 @@ TriquetraAudioProcessorEditor::TriquetraAudioProcessorEditor (TriquetraAudioProc
     setSize (400, 300);
     auto& params = processor.getParameters();
     setupKnob(mixParamSlider, static_cast<juce::AudioParameterFloat*>(params.getUnchecked(0)), 0, 12, 100, 100, "Mix");
+    setupKnob(delayTimeParamSlider, static_cast<juce::AudioParameterFloat*>(params.getUnchecked(1)), 100, 12, 100, 100, "Delay Time");
 
 }
 
@@ -62,10 +63,6 @@ void TriquetraAudioProcessorEditor::paint (juce::Graphics& g)
 {
     // (Our component is opaque, so we must completely fill the background with a solid colour)
     g.fillAll (getLookAndFeel().findColour (juce::ResizableWindow::backgroundColourId));
-
-    g.setColour (juce::Colours::white);
-    g.setFont (15.0f);
-    g.drawFittedText ("Hello World!", getLocalBounds(), juce::Justification::centred, 1);
 }
 
 void TriquetraAudioProcessorEditor::resized()

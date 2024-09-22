@@ -29,6 +29,7 @@ public:
     juce::AudioProcessorValueTreeState parameters;
     juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout();
     std::atomic<float>* mixParameter = nullptr;
+    std::atomic<float>* delayTimeParameter = nullptr;
 
     void prepareToPlay (double sampleRate, int samplesPerBlock) override;
     void releaseResources() override;
