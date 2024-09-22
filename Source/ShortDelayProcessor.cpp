@@ -6,13 +6,14 @@ ShortDelayProcessor::ShortDelayProcessor()
     // Constructor - initialize the modulation phases and offsets
     std::random_device rd;
     std::mt19937 gen(rd());
-    std::uniform_real_distribution<> dis(0.0, juce::MathConstants<float>::twoPi);
+    std::vector<int> primeRatios = {2, 3, 5, 7, 11, 13, 17, 19};  // Prime number ratios
 
     // Initialize the unique phase offsets for each delay line
     for (int i = 0; i < 8; ++i)
     {
         modulationPhases[i] = 0.0f;            // Initial phase for each delay line
-        phaseOffsets[i] = static_cast<float>(dis(gen));  // Random phase offset for each delay line
+        // Phase offsets are prime number ratios of the base delay modulation
+        phaseOffsets[i] = 1.0f / static_cast<float>(primeRatios[i]);  // Prime number ratios
     }
 }
 
@@ -51,8 +52,6 @@ void ShortDelayProcessor::prepare(double newSampleRate, int numChannels, float n
     delayBufferRight.resize(8, std::vector<float>(delayBufferSize, 0.0f));
 
     writePosition = 0; // Initialize write position for circular buffer
-
-    modulationFrequency = 5.5f; // Example tremolo rate, can be made a parameter
 }
 
 void ShortDelayProcessor::process(const std::array<float, 8>& shortDelayTimes,
@@ -68,13 +67,17 @@ void ShortDelayProcessor::process(const std::array<float, 8>& shortDelayTimes,
 
     for (int i = 0; i < 8; ++i)
     {
+        // Calculate modulation frequency as a 1/4 note of the current delay time
+        float baseModulationTime = shortDelayTimes[i] * 8.0f;  // 1/4 note modulation time
+        modulationFrequency = 1.0f / baseModulationTime;        // Frequency based on 1/4 note time
+
         // Increment the modulation phase for this delay line, respecting the unique phase offset
         modulationPhases[i] += modulationFrequency / static_cast<float>(sampleRate);
         if (modulationPhases[i] >= 1.0f)
             modulationPhases[i] -= 1.0f;
 
-        // Calculate the tremolo factor using a sine wave and the unique phase offset
-        float tremoloFactor = 1.0f + modulationValue * std::sin(2.0f * juce::MathConstants<float>::pi * modulationPhases[i] + phaseOffsets[i]);
+        // Calculate the tremolo factor using a sine wave and the unique phase offset with prime ratios
+        float tremoloFactor = 1.0f + modulationValue * std::sin(2.0f * juce::MathConstants<float>::pi * (modulationPhases[i] + phaseOffsets[i]));
 
         // Modulate the amplitude (tremolo) instead of modulating delay time
         float modulatedInputLeft = inputSampleLeft * tremoloFactor;
