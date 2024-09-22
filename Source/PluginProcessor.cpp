@@ -292,7 +292,7 @@ void TriquetraAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juc
         // Process delays and feedback without matrix modulation
         shortDelayProcessor.process(shortDelayTimes, shortFeedbackLeft, shortFeedbackRight, 0.0f, stereoOffset, shortDelayOutputLeft, shortDelayOutputRight, inputSampleLeft, inputSampleRight);
 
-        longDelayProcessor.process(longDelayTimes, longFeedbackLeft, longFeedbackRight, 0.0f, stereoOffset, longDelayOutputLeft, longDelayOutputRight, inputSampleLeft, inputSampleRight);
+        longDelayProcessor.process(longDelayTimes, longFeedbackLeft, longFeedbackRight, 0.0f, stereoOffset, longDelayOutputLeft, longDelayOutputRight, inputSampleLeft, inputSampleRight, feedbackValue);
 
         reverbProcessor.process(shortDelayOutputLeft, shortDelayOutputRight,
                                 longDelayOutputLeft, longDelayOutputRight,
