@@ -30,7 +30,9 @@ private:
     float modulationFeedbackAmount = 0.2f;
     float attenuationFactor = 0.35f;
     float longSubdivisionsFactor = 1.3f;
-
+    std::array<float, 4> modulationPhaseOffsets;  // Staggered modulation phase for each delay line
+    std::array<float, 4> modulationPhase;         // Phase for the modulation of each delay line
+    float modulationFrequency = 0.05f;   
     std::array<juce::dsp::IIR::Filter<float>, 4> allPassFiltersLong;
     juce::dsp::IIR::Filter<float> reverbWashLowpassFilterLeft, reverbWashLowpassFilterRight;
 

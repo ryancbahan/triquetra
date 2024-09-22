@@ -4,7 +4,13 @@
 
 LongDelayProcessor::LongDelayProcessor()
 {
-    // Constructor
+    // Initialize modulationPhaseOffsets with staggered values
+    modulationPhaseOffsets = { 0.0f, 0.25f, 0.5f, 0.75f };  // Different offsets for each delay line
+
+    // Initialize the modulationPhase array
+    modulationPhase.fill(0.0f);  // Start with all phases at 0
+
+    // Constructor for irregular delay factors
     std::random_device rd;
     std::mt19937 gen(rd());
     std::uniform_real_distribution<> dis(0.9, 1.1);
@@ -79,12 +85,25 @@ void LongDelayProcessor::process(const std::array<float, 4>& longDelayTimes,
 
     for (int i = 0; i < 4; ++i)
     {
+        // Increment the modulation phase for each delay line
+        modulationPhase[i] += modulationFrequency / sampleRate;
+        if (modulationPhase[i] >= 1.0f)
+            modulationPhase[i] -= 1.0f;
+
+        // Calculate the final modulation phase, adding staggered offsets
+        float finalModulationPhase = modulationPhase[i] + modulationPhaseOffsets[i];
+        if (finalModulationPhase >= 1.0f)
+            finalModulationPhase -= 1.0f;
+
+        // Calculate the modulated delay time using the staggered modulation
+        float modulatedDelay = std::sin(2.0f * juce::MathConstants<float>::pi * finalModulationPhase) * modulationValue;
+
         float baseDelayLeft = std::max(0.0f, longDelayTimes[i] * static_cast<float>(sampleRate));
         float baseDelayRight = std::max(0.0f, baseDelayLeft - stereoOffset);
 
         // Modulate delay times and clamp them to prevent overflow
-        float originalDelayLeft = juce::jlimit(0.0f, static_cast<float>(delayBufferSize - 1), baseDelayLeft * (1.0f + modulationValue));
-        float originalDelayRight = juce::jlimit(0.0f, static_cast<float>(delayBufferSize - 1), baseDelayRight * (1.0f + modulationValue));
+        float originalDelayLeft = juce::jlimit(0.0f, static_cast<float>(delayBufferSize - 1), baseDelayLeft * (1.0f + modulatedDelay));
+        float originalDelayRight = juce::jlimit(0.0f, static_cast<float>(delayBufferSize - 1), baseDelayRight * (1.0f + modulatedDelay));
 
         // Get samples for original delays
         longHadamardLeft[i] = getInterpolatedSample(delayBufferLeft[i], originalDelayLeft);
