@@ -26,21 +26,21 @@ void ShortDelayProcessor::prepare(double newSampleRate, int numChannels, float n
 
     // Initialize delay buffers
     delayBufferSize = static_cast<int>(sampleRate * 2.0); // 2 seconds of delay buffer
-    delayBufferLeft.resize(4, std::vector<float>(delayBufferSize, 0.0f));
-    delayBufferRight.resize(4, std::vector<float>(delayBufferSize, 0.0f));
+    delayBufferLeft.resize(8, std::vector<float>(delayBufferSize, 0.0f));
+    delayBufferRight.resize(8, std::vector<float>(delayBufferSize, 0.0f));
 
     writePosition = 0; // Initialize write position for circular buffer
 }
 
-void ShortDelayProcessor::process(const std::array<float, 4>& shortDelayTimes,
-                                  const std::array<float, 4>& shortFeedbackLeft,
-                                  const std::array<float, 4>& shortFeedbackRight,
+void ShortDelayProcessor::process(const std::array<float, 8>& shortDelayTimes,
+                                  const std::array<float, 8>& shortFeedbackLeft,
+                                  const std::array<float, 8>& shortFeedbackRight,
                                   float modulationValue, float stereoOffset,
-                                  std::array<float, 4>& shortDelayOutputLeft,
-                                  std::array<float, 4>& shortDelayOutputRight,
+                                  std::array<float, 8>& shortDelayOutputLeft,
+                                  std::array<float, 8>& shortDelayOutputRight,
                                   float inputSampleLeft, float inputSampleRight)
 {
-    for (int i = 0; i < 4; ++i)
+    for (int i = 0; i < 8; ++i)
     {
         float baseDelayLeft = shortDelayTimes[i] * sampleRate;
         float baseDelayRight = baseDelayLeft + stereoOffset;
@@ -69,7 +69,7 @@ void ShortDelayProcessor::process(const std::array<float, 4>& shortDelayTimes,
     }
 
     // Update the delay buffer for future feedback (left and right)
-    for (int i = 0; i < 4; ++i)
+    for (int i = 0; i < 8; ++i)
     {
         delayBufferLeft[i][writePosition] = shortDelayOutputLeft[i];
         delayBufferRight[i][writePosition] = shortDelayOutputRight[i];
@@ -92,7 +92,7 @@ float ShortDelayProcessor::getInterpolatedSample(const std::vector<float>& buffe
 
 void ShortDelayProcessor::updateDelayBuffer(float inputLeft, float inputRight)
 {
-    for (int i = 0; i < 4; ++i)
+    for (int i = 0; i < 8; ++i)
     {
         delayBufferLeft[i][writePosition] = inputLeft;
         delayBufferRight[i][writePosition] = inputRight;
@@ -100,13 +100,17 @@ void ShortDelayProcessor::updateDelayBuffer(float inputLeft, float inputRight)
     writePosition = (writePosition + 1) % delayBufferSize;
 }
 
-std::array<float, 4> ShortDelayProcessor::applyHadamardMixing(const std::array<float, 4>& input)
+std::array<float, 8> ShortDelayProcessor::applyHadamardMixing(const std::array<float, 8>& input)
 {
-    std::array<float, 4> output;
-    output[0] = input[0] + input[1] + input[2] + input[3];
-    output[1] = input[0] - input[1] + input[2] - input[3];
-    output[2] = input[0] + input[1] - input[2] - input[3];
-    output[3] = input[0] - input[1] - input[2] + input[3];
+    std::array<float, 8> output;
+    output[0] = input[0] + input[1] + input[2] + input[3] + input[4] + input[5] + input[6] + input[7];
+    output[1] = input[0] - input[1] + input[2] - input[3] + input[4] - input[5] + input[6] - input[7];
+    output[2] = input[0] + input[1] - input[2] - input[3] + input[4] + input[5] - input[6] - input[7];
+    output[3] = input[0] - input[1] - input[2] + input[3] + input[4] - input[5] - input[6] + input[7];
+    output[4] = input[0] + input[1] + input[2] + input[3] - input[4] - input[5] - input[6] - input[7];
+    output[5] = input[0] - input[1] + input[2] - input[3] - input[4] + input[5] - input[6] + input[7];
+    output[6] = input[0] + input[1] - input[2] - input[3] - input[4] - input[5] + input[6] + input[7];
+    output[7] = input[0] - input[1] - input[2] + input[3] - input[4] + input[5] + input[6] - input[7];
     return output;
 }
 

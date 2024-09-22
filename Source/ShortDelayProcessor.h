@@ -11,25 +11,25 @@ public:
     void prepare(double sampleRate, int numChannels, float feedback, float diffusionAmount, float modulationFeedbackAmount);
     
     // Return processed arrays with Hadamard mixed data
-    void process(const std::array<float, 4>& shortDelayTimes,
-                                      const std::array<float, 4>& shortFeedbackLeft,
-                                      const std::array<float, 4>& shortFeedbackRight,
+    void process(const std::array<float, 8>& shortDelayTimes,
+                                      const std::array<float, 8>& shortFeedbackLeft,
+                                      const std::array<float, 8>& shortFeedbackRight,
                                       float modulationValue, float stereoOffset,
-                                      std::array<float, 4>& shortDelayOutputLeft,
-                                      std::array<float, 4>& shortDelayOutputRight,
+                                      std::array<float, 8>& shortDelayOutputLeft,
+                                      std::array<float, 8>& shortDelayOutputRight,
                  float inputSampleLeft, float inputSampleRight);
 
 private:
     float getInterpolatedSample(const std::vector<float>& buffer, float delayInSamples);
     void updateDelayBuffer(float inputLeft, float inputRight);
-    std::array<float, 4> applyHadamardMixing(const std::array<float, 4>& input);
+    std::array<float, 8> applyHadamardMixing(const std::array<float, 8>& input);
 
     double sampleRate = 44100.0;
     float feedback = 0.0f;
     float diffusionAmount = 0.0f;
     float modulationFeedbackAmount = 0.0f;
 
-    std::array<juce::dsp::IIR::Filter<float>, 4> allPassFiltersShort;
+    std::array<juce::dsp::IIR::Filter<float>, 8> allPassFiltersShort;
     juce::dsp::IIR::Filter<float> reverbWashLowpassFilterLeft;
     juce::dsp::IIR::Filter<float> reverbWashLowpassFilterRight;
 
