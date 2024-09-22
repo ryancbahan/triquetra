@@ -26,6 +26,9 @@ class TriquetraAudioProcessor  : public juce::AudioProcessor
 public:
     TriquetraAudioProcessor();
     ~TriquetraAudioProcessor() override;
+    juce::AudioProcessorValueTreeState parameters;
+    juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout();
+    std::atomic<float>* mixParameter = nullptr;
 
     void prepareToPlay (double sampleRate, int samplesPerBlock) override;
     void releaseResources() override;
@@ -98,8 +101,6 @@ private:
         const std::array<float, 8>& reverbOutputRight,
         float inputSampleLeft,
         float inputSampleRight,
-        float dryMix,
-        float wetMix,
         float outputGain);
 
     float globalFeedback;

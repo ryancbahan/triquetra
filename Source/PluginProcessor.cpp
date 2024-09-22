@@ -12,23 +12,27 @@
 
 //==============================================================================
 TriquetraAudioProcessor::TriquetraAudioProcessor()
-:     shortFeedbackLeft({0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f}),
-      shortFeedbackRight({0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f}),
-      longFeedbackLeft({0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f}),
-      longFeedbackRight({0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f}),
-      reverbWashLeft({0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f}),
-      reverbWashRight({0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f}),
-      modulationPhase(0.0f),
-      modulationFrequency(0.05f),
-      diffusionAmount(0.7f),
-      modulationFeedbackAmount(0.2f),
-      bloomFeedbackGain(0.75f),
-      attenuationFactor(0.35f),
-      longSubdivisionsFactor(1.3f),
-      previousInputLeft(0.0f),
-      previousOutputLeft(0.0f),
-      previousInputRight(0.0f),
-      previousOutputRight(0.0f)
+:   AudioProcessor (BusesProperties()
+                    .withInput  ("Input",  juce::AudioChannelSet::stereo(), true)
+                    .withOutput ("Output", juce::AudioChannelSet::stereo(), true)),
+    parameters(*this, nullptr, "PARAMETERS", createParameterLayout()),
+    shortFeedbackLeft({0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f}),
+    shortFeedbackRight({0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f}),
+    longFeedbackLeft({0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f}),
+    longFeedbackRight({0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f}),
+    reverbWashLeft({0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f}),
+    reverbWashRight({0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f}),
+    modulationPhase(0.0f),
+    modulationFrequency(0.05f),
+    diffusionAmount(0.7f),
+    modulationFeedbackAmount(0.2f),
+    bloomFeedbackGain(0.75f),
+    attenuationFactor(0.35f),
+    longSubdivisionsFactor(1.3f),
+    previousInputLeft(0.0f),
+    previousOutputLeft(0.0f),
+    previousInputRight(0.0f),
+    previousOutputRight(0.0f)
 {
     // Initialize short delay times (prime number ratios for less repetitive echoes)
     shortDelayTimes = {0.0443f * 2, 0.0531f, 0.0667f, 0.0798f * 2, 0.0143f, 0.0531f * 2, 0.09 * 2, 0.12};
@@ -51,14 +55,25 @@ TriquetraAudioProcessor::TriquetraAudioProcessor()
     longFeedback = 0.7f;    // Adjust for blooming effect
 
     // Initialize dry/wet mix and input/output gains
-    dryMix = 0.5f;
-    wetMix = 0.5f;
     inputGain = 1.0f;
     outputGain = 1.0f;
+    
+    mixParameter = parameters.getRawParameterValue("mix");
 }
 
 TriquetraAudioProcessor::~TriquetraAudioProcessor()
 {
+}
+
+juce::AudioProcessorValueTreeState::ParameterLayout TriquetraAudioProcessor::createParameterLayout()
+{
+    std::vector<std::unique_ptr<juce::RangedAudioParameter>> params;
+    
+    params.push_back(std::make_unique<juce::AudioParameterFloat>(
+        juce::ParameterID("mix", 1), "mix",
+        juce::NormalisableRange<float>(0.0f, 1.0f), 0.5f));
+    
+    return { params.begin(), params.end() };
 }
 
 //==============================================================================
@@ -204,6 +219,8 @@ void TriquetraAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juc
     juce::ScopedNoDenormals noDenormals;
     auto totalNumInputChannels = getTotalNumInputChannels();
     auto totalNumOutputChannels = getTotalNumOutputChannels();
+    
+    float mixValue = mixParameter->load();
 
     if (totalNumOutputChannels < 2) return;
 
@@ -237,7 +254,7 @@ void TriquetraAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juc
             longDelayOutputLeft, longDelayOutputRight,
             reverbOutputLeft, reverbOutputRight,
             inputSampleLeft, inputSampleRight,
-            dryMix, wetMix, outputGain
+            1.0 - mixValue, mixValue, outputGain
         );
 
         // Write final output to buffer
