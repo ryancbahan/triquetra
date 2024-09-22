@@ -301,8 +301,7 @@ void TriquetraAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juc
     const float stereoOffset = 0.02f * sampleRate;
 
     // Control feedback gain to avoid excessive accumulation
-    const float feedbackGain = 0.7f;  // Keep feedback under control
-    const float matrixScaling = 0.8f; // Control matrix scaling
+    const float feedbackGain = 0.7f;
 
     for (int sample = 0; sample < buffer.getNumSamples(); ++sample)
     {
@@ -323,88 +322,16 @@ void TriquetraAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juc
         std::array<float, 8> reverbOutputLeft = { 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f };
         std::array<float, 8> reverbOutputRight = { 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f };
 
-        // Increase modulation depth for more extreme effect
-        float extremeModulationDepth = modulationDepth * 2.0f;
+        // Process delays and feedback without matrix modulation
+        shortDelayProcessor.process(shortDelayTimes, shortFeedbackLeft, shortFeedbackRight, 0.0f, stereoOffset, shortDelayOutputLeft, shortDelayOutputRight, processedInputLeft, processedInputRight);
 
-        // Update modulation
-        modulationPhase += modulationFrequency / sampleRate;
-        if (modulationPhase >= 1.0f) modulationPhase -= 1.0f;
-        float modulationValue = std::sin(2.0f * juce::MathConstants<float>::pi * modulationPhase) * extremeModulationDepth;
-
-        // Define LFO-modulated matrix for cross-feedback with controlled scaling
-        std::array<std::array<float, 8>, 4> shortToLongMatrix;
-        std::array<std::array<float, 8>, 4> shortToReverbMatrix;
-        std::array<std::array<float, 4>, 8> longToShortMatrix;
-        std::array<std::array<float, 8>, 8> longToReverbMatrix;
-
-        // Apply controlled scaling to matrix values
-        for (int i = 0; i < 4; ++i) {
-            for (int j = 0; j < 8; ++j) {
-                float lfoMod = 0.5f + 0.75f * std::sin(2.0f * juce::MathConstants<float>::pi * (modulationPhase + i * 0.1f + j * 0.05f));
-                shortToLongMatrix[i][j] = lfoMod * 1.5f * matrixScaling;
-                shortToReverbMatrix[i][j] = lfoMod * 1.2f * matrixScaling;
-            }
-        }
-
-        for (int i = 0; i < 8; ++i) {
-            for (int j = 0; j < 4; ++j) {
-                float lfoMod = 0.5f + 0.75f * std::sin(2.0f * juce::MathConstants<float>::pi * (modulationPhase + i * 0.07f + j * 0.03f));
-                longToShortMatrix[i][j] = lfoMod * 1.5f * matrixScaling;
-            }
-            for (int j = 0; j < 8; ++j) {
-                float lfoMod = 0.5f + 0.75f * std::sin(2.0f * juce::MathConstants<float>::pi * (modulationPhase + i * 0.08f + j * 0.06f));
-                longToReverbMatrix[i][j] = lfoMod * 1.8f * matrixScaling;
-            }
-        }
-
-        // Create arrays for scaled feedback values
-        std::array<float, 4> scaledShortFeedbackLeft;
-        std::array<float, 4> scaledShortFeedbackRight;
-        std::array<float, 8> scaledLongFeedbackLeft;
-        std::array<float, 8> scaledLongFeedbackRight;
-
-        // Scale the short feedback arrays
-        for (int i = 0; i < 4; ++i) {
-            scaledShortFeedbackLeft[i] = shortFeedbackLeft[i] * feedbackGain;
-            scaledShortFeedbackRight[i] = shortFeedbackRight[i] * feedbackGain;
-        }
-
-        // Scale the long feedback arrays
-        for (int i = 0; i < 8; ++i) {
-            scaledLongFeedbackLeft[i] = longFeedbackLeft[i] * feedbackGain;
-            scaledLongFeedbackRight[i] = longFeedbackRight[i] * feedbackGain;
-        }
-
-        // Process delays and feedback
-        shortDelayProcessor.process(shortDelayTimes, scaledShortFeedbackLeft, scaledShortFeedbackRight, modulationValue, stereoOffset, shortDelayOutputLeft, shortDelayOutputRight, processedInputLeft, processedInputRight);
-
-        longDelayProcessor.process(longDelayTimes, scaledLongFeedbackLeft, scaledLongFeedbackRight, modulationValue, stereoOffset, longDelayOutputLeft, longDelayOutputRight, processedInputLeft, processedInputRight);
+        longDelayProcessor.process(longDelayTimes, longFeedbackLeft, longFeedbackRight, 0.0f, stereoOffset, longDelayOutputLeft, longDelayOutputRight, processedInputLeft, processedInputRight);
 
         reverbProcessor.process(shortDelayOutputLeft, shortDelayOutputRight,
                                 longDelayOutputLeft, longDelayOutputRight,
                                 reverbOutputLeft, reverbOutputRight);
 
-        // Apply cross-feedback from short delays to long delays and reverb
-        for (int i = 0; i < 8; ++i) {
-            longDelayOutputLeft[i] += shortToLongMatrix[i % 4][i] * shortDelayOutputLeft[i % 4];
-            longDelayOutputRight[i] += shortToLongMatrix[i % 4][i] * shortDelayOutputRight[i % 4];
-            
-            reverbOutputLeft[i] += shortToReverbMatrix[i % 4][i] * shortDelayOutputLeft[i % 4];
-            reverbOutputRight[i] += shortToReverbMatrix[i % 4][i] * shortDelayOutputRight[i % 4];
-        }
-
-        // Cross-feedback from long delays into short delays
-        for (int i = 0; i < 4; ++i) {
-            shortDelayOutputLeft[i] += longToShortMatrix[i][i] * longDelayOutputLeft[i % 8];
-            shortDelayOutputRight[i] += longToShortMatrix[i][i] * longDelayOutputRight[i % 8];
-        }
-
-        // Apply cross-feedback from long delays to reverb
-        for (int i = 0; i < 8; ++i) {
-            reverbOutputLeft[i] += longToReverbMatrix[i][i] * longDelayOutputLeft[i];
-            reverbOutputRight[i] += longToReverbMatrix[i][i] * longDelayOutputRight[i];
-        }
-
+        // Combine outputs from the 3 processors for the final mix
         auto [outputSampleLeft, outputSampleRight] = processAndSumSignals(
             shortDelayOutputLeft, shortDelayOutputRight,
             longDelayOutputLeft, longDelayOutputRight,
@@ -418,7 +345,7 @@ void TriquetraAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juc
         buffer.setSample(1, sample, outputSampleRight);
 
         // Update delay buffer for feedback
-        delayBuffer[writePosition] = (outputSampleLeft + outputSampleRight) * 0.5f * feedbackGain; // Add feedback control here
+        delayBuffer[writePosition] = (outputSampleLeft + outputSampleRight) * 0.5f * feedbackGain;
         writePosition = (writePosition + 1) % delayBufferSize;
     }
 }
