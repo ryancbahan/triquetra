@@ -10,8 +10,8 @@ public:
 
     void prepare(double sampleRate, int samplesPerBlock);
 
-    void process(const std::array<float, 4>& shortHadamardLeft,
-                 const std::array<float, 4>& shortHadamardRight,
+    void process(const std::array<float, 8>& shortHadamardLeft,
+                 const std::array<float, 8>& shortHadamardRight,
                  const std::array<float, 8>& longHadamardLeft,
                  const std::array<float, 8>& longHadamardRight,
                  std::array<float, 8>& outLeft,
@@ -23,8 +23,8 @@ private:
     double sampleRate;
     float feedbackGain;
 
-    std::array<juce::dsp::IIR::Filter<float>, 4> allPassFiltersLong;
-    std::array<juce::dsp::IIR::Filter<float>, 4> allPassFiltersShort;
+    std::array<juce::dsp::IIR::Filter<float>, 8> allPassFiltersLong;
+    std::array<juce::dsp::IIR::Filter<float>, 8> allPassFiltersShort;
     juce::dsp::IIR::Filter<float> lowpassFilter;
     juce::dsp::IIR::Filter<float> highpassFilter;
 

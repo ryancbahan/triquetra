@@ -12,21 +12,21 @@ void ReverbProcessor::prepare(double sampleRate, int samplesPerBlock)
 
     juce::dsp::ProcessSpec spec{ sampleRate, static_cast<juce::uint32> (samplesPerBlock), 2 };
 
-    // Prepare all-pass filters
+    // Prepare all-pass filters (updated for 8 delays)
     for (auto& filter : allPassFiltersLong)
     {
         filter.prepare(spec);
-        *filter.coefficients = *juce::dsp::IIR::Coefficients<float>::makeAllPass(sampleRate, 400.0f);
+        *filter.coefficients = *juce::dsp::IIR::Coefficients<float>::makeAllPass(sampleRate, 4000.0f);
     }
 
     for (auto& filter : allPassFiltersShort)
     {
         filter.prepare(spec);
-        *filter.coefficients = *juce::dsp::IIR::Coefficients<float>::makeAllPass(sampleRate, 200.0f);
+        *filter.coefficients = *juce::dsp::IIR::Coefficients<float>::makeAllPass(sampleRate, 1000.0f);
     }
 
     // Set up filter coefficients with steeper slopes
-    auto lowCoefficients = juce::dsp::IIR::Coefficients<float>::makeLowPass(sampleRate, 1000.0f);
+    auto lowCoefficients = juce::dsp::IIR::Coefficients<float>::makeLowPass(sampleRate, 2000.0f, 0.7071f);
     auto highCoefficients = juce::dsp::IIR::Coefficients<float>::makeHighPass(sampleRate, 40.0f, 0.7071f);
     
     // Prepare steep lowpass and highpass filters
@@ -44,13 +44,13 @@ void ReverbProcessor::prepare(double sampleRate, int samplesPerBlock)
     lowpassFilter.reset();
     highpassFilter.reset();
 
-    // Initialize reverbWash arrays
+    // Initialize reverbWash arrays for 8 delays
     reverbWashLeft.fill(0.0f);
     reverbWashRight.fill(0.0f);
 }
 
-void ReverbProcessor::process(const std::array<float, 4>& shortHadamardLeft,
-                              const std::array<float, 4>& shortHadamardRight,
+void ReverbProcessor::process(const std::array<float, 8>& shortHadamardLeft,
+                              const std::array<float, 8>& shortHadamardRight,
                               const std::array<float, 8>& longHadamardLeft,
                               const std::array<float, 8>& longHadamardRight,
                               std::array<float, 8>& outLeft,
@@ -65,8 +65,8 @@ void ReverbProcessor::process(const std::array<float, 4>& shortHadamardLeft,
     for (int i = 0; i < 8; ++i)
     {
         // Combine short and long Hadamard matrices and apply input scaling
-        float reverbInputLeft = (shortHadamardLeft[i % 4] + longHadamardLeft[i]) * inputScale;
-        float reverbInputRight = (shortHadamardRight[i % 4] + longHadamardRight[i]) * inputScale;
+        float reverbInputLeft = (shortHadamardLeft[i] + longHadamardLeft[i]) * inputScale;
+        float reverbInputRight = (shortHadamardRight[i] + longHadamardRight[i]) * inputScale;
 
         // Add self-feedback from the previous iteration
         reverbInputLeft += reverbWashLeft[i] * feedbackGain;
@@ -76,18 +76,24 @@ void ReverbProcessor::process(const std::array<float, 4>& shortHadamardLeft,
         reverbInputLeft = highpassFilter.processSample(lowpassFilter.processSample(reverbInputLeft));
         reverbInputRight = highpassFilter.processSample(lowpassFilter.processSample(reverbInputRight));
 
-        // Process the signal through long all-pass filters
-        reverbWashLeft[i] = allPassFiltersLong[i % 4].processSample(reverbInputLeft);
-        reverbWashRight[i] = allPassFiltersLong[i % 4].processSample(reverbInputRight);
-
-        // Process through additional diffusion stages
-        for (int j = 0; j < 6; ++j) // Increased diffusion stages
+        // Check if the input is valid, prevent processing if the signal is too small
+        if (std::abs(reverbInputLeft) < 1e-6f || std::abs(reverbInputRight) < 1e-6f)
         {
-            reverbWashLeft[i] = allPassFiltersShort[j % 4].processSample(reverbWashLeft[i]);
-            reverbWashRight[i] = allPassFiltersShort[j % 4].processSample(reverbWashRight[i]);
+            continue;  // Skip processing if the signal is too small
         }
 
-        // Introduce cross-feedback with asymmetry for stereo width
+        // Process the signal through long all-pass filters
+        reverbWashLeft[i] = allPassFiltersLong[i].processSample(reverbInputLeft);
+        reverbWashRight[i] = allPassFiltersLong[i].processSample(reverbInputRight);
+//
+//        // Process through additional diffusion stages (make sure we process all 8 stages)
+        for (int j = 0; j < 8; ++j)
+        {
+            reverbWashLeft[i] = allPassFiltersShort[j].processSample(reverbWashLeft[i]);
+            reverbWashRight[i] = allPassFiltersShort[j].processSample(reverbWashRight[i]);
+        }
+
+//         Introduce cross-feedback with asymmetry for stereo width
         reverbWashLeft[i] += reverbWashRight[(i + 1) % 8] * crossFeedbackLeftGain;
         reverbWashRight[i] += reverbWashLeft[(i + 2) % 8] * crossFeedbackRightGain;
 
@@ -103,13 +109,6 @@ void ReverbProcessor::process(const std::array<float, 4>& shortHadamardLeft,
         outLeft[i] = std::clamp(reverbWashLeft[i], -1.0f, 1.0f);
         outRight[i] = std::clamp(reverbWashRight[i], -1.0f, 1.0f);
     }
-
-    // Optional normalization (uncomment if needed)
-    // for (int i = 0; i < 8; ++i)
-    // {
-    //     outLeft[i] *= 0.125f;
-    //     outRight[i] *= 0.125f;
-    // }
 }
 
 void ReverbProcessor::updateModulation()

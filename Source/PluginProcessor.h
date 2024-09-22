@@ -58,8 +58,8 @@ public:
     void setStateInformation (const void* data, int sizeInBytes) override;
 
 private:
-    std::array<float, 4> shortFeedbackLeft;
-    std::array<float, 4> shortFeedbackRight;
+    std::array<float, 8> shortFeedbackLeft;
+    std::array<float, 8> shortFeedbackRight;
     std::array<float, 8> longFeedbackLeft;
     std::array<float, 8> longFeedbackRight;
 
@@ -89,14 +89,25 @@ private:
     int delayBufferSize;
     int writePosition;
     float lowpassFilter(float input, float cutoff, float sampleRate);
-    std::array<float, 4> shortDelayTimes;
+    std::array<float, 8> shortDelayTimes;
     std::array<float, 4> longDelayTimes;
-    std::array<float, 4> modulatedShortDelayTimes;
-    std::array<float, 4> modulatedLongDelayTimes;
+    std::array<float, 8> modulatedShortDelayTimes;
+    std::array<float, 8> modulatedLongDelayTimes;
     
     float getCubicInterpolatedSample(float delayTime);
     std::array<AllPassFilter, 4> longAllPassFilters;
-
+    std::pair<float, float> processAndSumSignals(
+        const std::array<float, 8>& shortDelayOutputLeft,
+        const std::array<float, 8>& shortDelayOutputRight,
+        const std::array<float, 8>& longDelayOutputLeft,
+        const std::array<float, 8>& longDelayOutputRight,
+        const std::array<float, 8>& reverbOutputLeft,
+        const std::array<float, 8>& reverbOutputRight,
+        float inputSampleLeft,
+        float inputSampleRight,
+        float dryMix,
+        float wetMix,
+     float outputGain);
 
     float globalFeedback;
     float lastOutputSampleLeft;
