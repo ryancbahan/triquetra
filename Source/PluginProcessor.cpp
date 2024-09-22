@@ -8,6 +8,7 @@
 
 #include "PluginProcessor.h"
 #include "PluginEditor.h"
+#include <numeric>
 
 //==============================================================================
 TriquetraAudioProcessor::TriquetraAudioProcessor()
@@ -19,8 +20,6 @@ TriquetraAudioProcessor::TriquetraAudioProcessor()
       reverbWashRight({0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f}),
       modulationPhase(0.0f),
       modulationFrequency(0.05f),
-      preDelayWritePos(0),
-      preDelaySamples(4410), // Default pre-delay of 100ms at 44.1kHz sample rate
       diffusionAmount(0.7f),
       modulationFeedbackAmount(0.2f),
       bloomFeedbackGain(0.75f),
@@ -56,30 +55,6 @@ TriquetraAudioProcessor::TriquetraAudioProcessor()
     wetMix = 0.5f;
     inputGain = 1.0f;
     outputGain = 1.0f;
-
-    // Initialize Hadamard matrix for feedback routing
-    initializeHadamardMatrix();
-
-    // Resize and zero-out pre-delay buffers (assuming a default size)
-    preDelayBufferLeft.resize(preDelaySamples, 0.0f);
-    preDelayBufferRight.resize(preDelaySamples, 0.0f);
-}
-
-
-
-void TriquetraAudioProcessor::initializeHadamardMatrix()
-{
-    hadamardMatrix = { {
-        { 1.0f,  1.0f,  1.0f,  1.0f },
-        { 1.0f, -1.0f,  1.0f, -1.0f },
-        { 1.0f,  1.0f, -1.0f, -1.0f },
-        { 1.0f, -1.0f, -1.0f,  1.0f }
-    } };
-
-    float normalizationFactor = 0.5f;
-    for (auto& row : hadamardMatrix)
-        for (auto& element : row)
-            element *= normalizationFactor;
 }
 
 TriquetraAudioProcessor::~TriquetraAudioProcessor()
@@ -154,39 +129,6 @@ void TriquetraAudioProcessor::releaseResources()
     // spare memory, etc.
 }
 
-float TriquetraAudioProcessor::generateLFOSample(int lfoIndex)
-{
-    float phase = lfoPhases[lfoIndex];
-    float sample = std::sin(2.0f * juce::MathConstants<float>::pi * phase);
-    return sample;
-}
-
-void TriquetraAudioProcessor::updateLFOs()
-{
-    for (int i = 0; i < 4; ++i)
-    {
-        lfoPhases[i] += lfoFrequencies[i] / getSampleRate();
-        if (lfoPhases[i] >= 1.0f)
-            lfoPhases[i] -= 1.0f;
-    }
-}
-
-void TriquetraAudioProcessor::applyHadamardToLFOs(std::array<float, 4>& lfoOutputs)
-{
-    std::array<float, 4> mixedLFOs;
-    for (int i = 0; i < 4; ++i)
-    {
-        mixedLFOs[i] = 0.0f;
-        for (int j = 0; j < 4; ++j)
-        {
-            mixedLFOs[i] += hadamardMatrix[i][j] * lfoOutputs[j];
-        }
-    }
-    lfoOutputs = mixedLFOs;
-}
-
-
-
 #ifndef JucePlugin_PreferredChannelConfigurations
 bool TriquetraAudioProcessor::isBusesLayoutSupported (const BusesLayout& layouts) const
 {
@@ -213,23 +155,6 @@ bool TriquetraAudioProcessor::isBusesLayoutSupported (const BusesLayout& layouts
 }
 #endif
 
-void TriquetraAudioProcessor::initializeLowpassFilter(double sampleRate)
-{
-    // Set the cutoff frequency to 8kHz
-    const double cutoffFrequency = 8000.0;
-    const double q = 0.707; // Butterworth Q for smooth response
-
-    auto coefficients = juce::dsp::IIR::Coefficients<float>::makeLowPass(sampleRate, cutoffFrequency, q);
-
-    lowpassFilterLeft.coefficients = coefficients;
-    lowpassFilterRight.coefficients = coefficients;
-
-    // Prepare the filters
-    juce::dsp::ProcessSpec spec { sampleRate, static_cast<juce::uint32> (512), 1 };
-    lowpassFilterLeft.prepare(spec);
-    lowpassFilterRight.prepare(spec);
-}
-
 void TriquetraAudioProcessor::prepareToPlay(double sampleRate, int samplesPerBlock)
 {
     // Prepare the delay buffer
@@ -237,12 +162,6 @@ void TriquetraAudioProcessor::prepareToPlay(double sampleRate, int samplesPerBlo
     delayBufferSize = maxDelaySamples;
     delayBuffer.resize(delayBufferSize, 0.0f);
     writePosition = 0;
-
-    // Set pre-delay based on sample rate (e.g., 100ms pre-delay)
-    preDelaySamples = static_cast<int>(0.1 * sampleRate);  // 100ms in samples
-    preDelayBufferLeft.resize(preDelaySamples, 0.0f);
-    preDelayBufferRight.resize(preDelaySamples, 0.0f);
-    preDelayWritePos = 0;
 
     // Zero-out feedback buffers to ensure they start clean on session reload
     shortFeedbackLeft.fill(0.0f);
@@ -256,15 +175,10 @@ void TriquetraAudioProcessor::prepareToPlay(double sampleRate, int samplesPerBlo
     longDelayProcessor.prepare(sampleRate, getTotalNumOutputChannels(), feedback, bloomFeedbackGain, modulationFeedbackAmount, attenuationFactor, longSubdivisionsFactor, 0.9);
 
     // Reset filters
-    lowpassFilterLeft.reset();
-    lowpassFilterRight.reset();
     reverbWashLowpassFilterLeft.reset();
     reverbWashLowpassFilterRight.reset();
     reverbWashHighpassFilterLeft.reset();
     reverbWashHighpassFilterRight.reset();
-
-    // Prepare and initialize lowpass filters based on the current sample rate
-    initializeLowpassFilter(sampleRate);
 
     // Reset modulation phase and other time-dependent variables
     modulationPhase = 0.0f;
@@ -308,24 +222,10 @@ void TriquetraAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juc
         float inputSampleLeft = buffer.getSample(0, sample);
         float inputSampleRight = totalNumInputChannels > 1 ? buffer.getSample(1, sample) : inputSampleLeft;
 
-        // Apply DC offset removal
-        float processedInputLeft = removeDCOffset(inputSampleLeft, previousInputLeft, previousOutputLeft);
-        float processedInputRight = removeDCOffset(inputSampleRight, previousInputRight, previousOutputRight);
-
-        processedInputLeft = applyGain(processedInputLeft, inputGain);
-        processedInputRight = applyGain(processedInputRight, inputGain);
-
-        std::array<float, 8> shortDelayOutputLeft = { 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f };
-        std::array<float, 8> shortDelayOutputRight = { 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f };
-        std::array<float, 8> longDelayOutputLeft = { 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f };
-        std::array<float, 8> longDelayOutputRight = { 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f };
-        std::array<float, 8> reverbOutputLeft = { 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f };
-        std::array<float, 8> reverbOutputRight = { 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f };
-
         // Process delays and feedback without matrix modulation
-        shortDelayProcessor.process(shortDelayTimes, shortFeedbackLeft, shortFeedbackRight, 0.0f, stereoOffset, shortDelayOutputLeft, shortDelayOutputRight, processedInputLeft, processedInputRight);
+        shortDelayProcessor.process(shortDelayTimes, shortFeedbackLeft, shortFeedbackRight, 0.0f, stereoOffset, shortDelayOutputLeft, shortDelayOutputRight, inputSampleLeft, inputSampleRight);
 
-        longDelayProcessor.process(longDelayTimes, longFeedbackLeft, longFeedbackRight, 0.0f, stereoOffset, longDelayOutputLeft, longDelayOutputRight, processedInputLeft, processedInputRight);
+        longDelayProcessor.process(longDelayTimes, longFeedbackLeft, longFeedbackRight, 0.0f, stereoOffset, longDelayOutputLeft, longDelayOutputRight, inputSampleLeft, inputSampleRight);
 
         reverbProcessor.process(shortDelayOutputLeft, shortDelayOutputRight,
                                 longDelayOutputLeft, longDelayOutputRight,
@@ -336,7 +236,7 @@ void TriquetraAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juc
             shortDelayOutputLeft, shortDelayOutputRight,
             longDelayOutputLeft, longDelayOutputRight,
             reverbOutputLeft, reverbOutputRight,
-            processedInputLeft, processedInputRight,
+            inputSampleLeft, inputSampleRight,
             dryMix, wetMix, outputGain
         );
 
@@ -365,23 +265,13 @@ std::pair<float, float> TriquetraAudioProcessor::processAndSumSignals(
     float outputGain)
 {
     // Combine short, long delay, and reverb output for wet signal
-    float wetSignalLeft = (shortDelayOutputLeft[0] + shortDelayOutputLeft[1] + shortDelayOutputLeft[2] + shortDelayOutputLeft[3] + shortDelayOutputLeft[4] + shortDelayOutputLeft[5] + shortDelayOutputLeft[6] + shortDelayOutputLeft[7]) * 0.25f
-                        + (longDelayOutputLeft[0] + longDelayOutputLeft[1] + longDelayOutputLeft[2] + longDelayOutputLeft[3]
-                        + longDelayOutputLeft[4] + longDelayOutputLeft[5] + longDelayOutputLeft[6] + longDelayOutputLeft[7]) * 0.25f
-                        + (reverbOutputRight[0] + reverbOutputRight[1] + reverbOutputRight[2] + reverbOutputRight[3] + reverbOutputRight[4] + reverbOutputRight[5] + reverbOutputRight[6] + reverbOutputRight[7]) * 0.25f;
+    float wetSignalLeft = std::accumulate(shortDelayOutputLeft.begin(), shortDelayOutputLeft.end(), 0.0f) * 0.25f
+                        + std::accumulate(longDelayOutputLeft.begin(), longDelayOutputLeft.end(), 0.0f) * 0.25f
+                        + std::accumulate(reverbOutputLeft.begin(), reverbOutputLeft.end(), 0.0f) * 0.25f;
 
-    float wetSignalRight = (shortDelayOutputRight[0] + shortDelayOutputRight[1] + shortDelayOutputRight[2] + shortDelayOutputRight[3] + shortDelayOutputRight[4] + shortDelayOutputRight[5] + shortDelayOutputRight[6] + shortDelayOutputRight[7]) * 0.25f
-                         + (longDelayOutputRight[0] + longDelayOutputRight[1] + longDelayOutputRight[2] + longDelayOutputRight[3]
-                         + longDelayOutputRight[4] + longDelayOutputRight[5] + longDelayOutputRight[6] + longDelayOutputRight[7]) * 0.25f
-                         + (reverbOutputLeft[0] + reverbOutputLeft[1] + reverbOutputLeft[2] + reverbOutputLeft[3] + reverbOutputLeft[4] + reverbOutputLeft[5] + reverbOutputLeft[6] + reverbOutputLeft[7]) * 0.25f;
-    
-//        float wetSignalLeft = (reverbOutputRight[0] + reverbOutputRight[1] + reverbOutputRight[2] + reverbOutputRight[3] + reverbOutputRight[4] + reverbOutputRight[5] + reverbOutputRight[6] + reverbOutputRight[7]);
-//    
-//        float wetSignalRight = (reverbOutputLeft[0] + reverbOutputLeft[1] + reverbOutputLeft[2] + reverbOutputLeft[3] + reverbOutputLeft[4] + reverbOutputLeft[5] + reverbOutputLeft[6] + reverbOutputLeft[7]);
-    
-//    float wetSignalLeft = (shortDelayOutputLeft[0] + shortDelayOutputLeft[1] + shortDelayOutputLeft[2] + shortDelayOutputLeft[3] + shortDelayOutputLeft[4] + shortDelayOutputLeft[5] + shortDelayOutputLeft[6] + shortDelayOutputLeft[7]);
-//
-//    float wetSignalRight = (shortDelayOutputRight[0] + shortDelayOutputRight[1] + shortDelayOutputRight[2] + shortDelayOutputRight[3] + shortDelayOutputRight[4] + shortDelayOutputRight[5] + shortDelayOutputRight[6] + shortDelayOutputRight[7]);
+    float wetSignalRight = std::accumulate(shortDelayOutputRight.begin(), shortDelayOutputRight.end(), 0.0f) * 0.25f
+                        + std::accumulate(longDelayOutputRight.begin(), longDelayOutputRight.end(), 0.0f) * 0.25f
+                        + std::accumulate(reverbOutputRight.begin(), reverbOutputRight.end(), 0.0f) * 0.25f;
 
     // Combine wet and dry signals, apply final output mix
     float outputSampleLeft = inputSampleLeft * dryMix + wetSignalLeft * wetMix;
@@ -396,41 +286,6 @@ std::pair<float, float> TriquetraAudioProcessor::processAndSumSignals(
     outputSampleRight = juce::jlimit(-1.0f, 1.0f, outputSampleRight);
 
     return {outputSampleLeft, outputSampleRight};
-}
-
-
-inline float TriquetraAudioProcessor::clearDenormals(float value)
-{
-    return std::abs(value) < 1.0e-15f ? 0.0f : value;
-}
-
-float TriquetraAudioProcessor::removeDCOffset(float input, float& previousInput, float& previousOutput)
-{
-    const float alpha = 0.99f;  // Filter coefficient, adjust this to control the cutoff
-    float output = input - previousInput + alpha * previousOutput;
-    previousInput = input;
-    previousOutput = output;
-    return output;
-}
-
-
-// Compression function for managing peaks
-float TriquetraAudioProcessor::applyCompression(float sample, float threshold, float ratio)
-{
-    if (std::abs(sample) > threshold)
-    {
-        sample = threshold + (sample - threshold) / ratio;
-    }
-    return sample;
-}
-
-
-float TriquetraAudioProcessor::calculateAmplitude(const std::array<float, 4>& signal) {
-    float sum = 0.0f;
-    for (float s : signal) {
-        sum += std::abs(s);
-    }
-    return sum / 4.0f;
 }
 
 //==============================================================================

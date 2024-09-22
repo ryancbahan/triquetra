@@ -26,23 +26,23 @@ void ReverbProcessor::prepare(double sampleRate, int samplesPerBlock)
     }
 
     // Set up filter coefficients with steeper slopes
-    auto lowCoefficients = juce::dsp::IIR::Coefficients<float>::makeLowPass(sampleRate, 2000.0f, 0.7071f);
-    auto highCoefficients = juce::dsp::IIR::Coefficients<float>::makeHighPass(sampleRate, 40.0f, 0.7071f);
+//    auto lowCoefficients = juce::dsp::IIR::Coefficients<float>::makeLowPass(sampleRate, 2000.0f, 0.7071f);
+//    auto highCoefficients = juce::dsp::IIR::Coefficients<float>::makeHighPass(sampleRate, 40.0f, 0.7071f);
     
     // Prepare steep lowpass and highpass filters
-    lowpassFilter.prepare(spec);
-    highpassFilter.prepare(spec);
-    
-    *lowpassFilter.coefficients = *lowCoefficients;
-    *highpassFilter.coefficients = *highCoefficients;
+//    lowpassFilter.prepare(spec);
+//    highpassFilter.prepare(spec);
+//    
+//    *lowpassFilter.coefficients = *lowCoefficients;
+//    *highpassFilter.coefficients = *highCoefficients;
 
     // Reset all filter states
     for (auto& filter : allPassFiltersLong)
         filter.reset();
     for (auto& filter : allPassFiltersShort)
         filter.reset();
-    lowpassFilter.reset();
-    highpassFilter.reset();
+//    lowpassFilter.reset();
+//    highpassFilter.reset();
 
     // Initialize reverbWash arrays for 8 delays
     reverbWashLeft.fill(0.0f);
@@ -73,8 +73,8 @@ void ReverbProcessor::process(const std::array<float, 8>& shortHadamardLeft,
         reverbInputRight += reverbWashRight[i] * feedbackGain;
 
         // Process through high-pass and low-pass filters
-        reverbInputLeft = highpassFilter.processSample(lowpassFilter.processSample(reverbInputLeft));
-        reverbInputRight = highpassFilter.processSample(lowpassFilter.processSample(reverbInputRight));
+//        reverbInputLeft = highpassFilter.processSample(lowpassFilter.processSample(reverbInputLeft));
+//        reverbInputRight = highpassFilter.processSample(lowpassFilter.processSample(reverbInputRight));
 
         // Check if the input is valid, prevent processing if the signal is too small
         if (std::abs(reverbInputLeft) < 1e-6f || std::abs(reverbInputRight) < 1e-6f)
@@ -102,8 +102,8 @@ void ReverbProcessor::process(const std::array<float, 8>& shortHadamardLeft,
         reverbWashRight[i] *= reverbWashDecay;
 
         // Final high-pass and low-pass filtering
-        reverbWashLeft[i] = highpassFilter.processSample(lowpassFilter.processSample(reverbWashLeft[i]));
-        reverbWashRight[i] = highpassFilter.processSample(lowpassFilter.processSample(reverbWashRight[i]));
+//        reverbWashLeft[i] = highpassFilter.processSample(lowpassFilter.processSample(reverbWashLeft[i]));
+//        reverbWashRight[i] = highpassFilter.processSample(lowpassFilter.processSample(reverbWashRight[i]));
 
         // Store the processed samples directly in the output arrays
         outLeft[i] = std::clamp(reverbWashLeft[i], -1.0f, 1.0f);
