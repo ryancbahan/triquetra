@@ -176,6 +176,22 @@ bool TriquetraAudioProcessor::isBusesLayoutSupported (const BusesLayout& layouts
 }
 #endif
 
+void TriquetraAudioProcessor::updateShortDelayTimes(float delayTime)
+{
+    // Start with a small base, fraction of the main delay time
+    float baseTime = delayTime * 0.1f; // 10% of the main delay time for early reflections
+
+    // Generate short, irregular delay times as small fractions
+    shortDelayTimes[0] = baseTime * 0.75f; // Slightly shorter than base
+    shortDelayTimes[1] = baseTime * 0.87f; // Another small variation
+    shortDelayTimes[2] = baseTime * 0.95f; // Close to base
+    shortDelayTimes[3] = baseTime * 0.60f; // A shorter, irregular reflection
+    shortDelayTimes[4] = baseTime * 0.40f; // More irregularity
+    shortDelayTimes[5] = baseTime * 0.55f;
+    shortDelayTimes[6] = baseTime * 1.2f;  // Slightly longer, still short
+    shortDelayTimes[7] = baseTime * 0.9f;  // Another slightly shorter reflection
+}
+
 void TriquetraAudioProcessor::prepareToPlay(double sampleRate, int samplesPerBlock)
 {
     // Prepare the delay buffer
@@ -247,6 +263,8 @@ void TriquetraAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juc
     {
         longDelayTimes[i] = longDelayTimes[i - 1] * 1.25f;  // Each subsequent value is 25% more
     }
+    
+    updateShortDelayTimes(targetDelayTimeValue);
 
     // Ensure that all delay times are within valid bounds
     for (float& delayTime : longDelayTimes)

@@ -94,6 +94,8 @@ private:
     std::array<float, 8> modulatedShortDelayTimes;
     std::array<float, 8> modulatedLongDelayTimes;
     
+    void updateShortDelayTimes(float delayTime);
+
     std::tuple<float, float, float, float> processAndSumSignals(
         const std::array<float, 8>& shortDelayOutputLeft,
         const std::array<float, 8>& shortDelayOutputRight,
