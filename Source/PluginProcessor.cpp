@@ -105,7 +105,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout TriquetraAudioProcessor::cre
     
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
         juce::ParameterID("depth", 4), "Depth",
-        juce::NormalisableRange<float>(0.0f, 7.0f), 0.5f));
+        juce::NormalisableRange<float>(0.0f, 4.0f), 0.5f));
     
     return { params.begin(), params.end() };
 }
