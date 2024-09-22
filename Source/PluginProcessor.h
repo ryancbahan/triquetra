@@ -26,6 +26,9 @@ class TriquetraAudioProcessor  : public juce::AudioProcessor
 public:
     TriquetraAudioProcessor();
     ~TriquetraAudioProcessor() override;
+    juce::AudioProcessorValueTreeState parameters;
+    juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout();
+    std::atomic<float>* mixParameter = nullptr;
 
     void prepareToPlay (double sampleRate, int samplesPerBlock) override;
     void releaseResources() override;
@@ -89,7 +92,7 @@ private:
     std::array<float, 8> modulatedShortDelayTimes;
     std::array<float, 8> modulatedLongDelayTimes;
     
-    std::pair<float, float> processAndSumSignals(
+    std::tuple<float, float, float, float> processAndSumSignals(
         const std::array<float, 8>& shortDelayOutputLeft,
         const std::array<float, 8>& shortDelayOutputRight,
         const std::array<float, 8>& longDelayOutputLeft,

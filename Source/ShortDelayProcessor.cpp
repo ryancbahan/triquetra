@@ -48,13 +48,9 @@ void ShortDelayProcessor::process(const std::array<float, 8>& shortDelayTimes,
         float modulatedDelayLeft = baseDelayLeft * (1.0f + modulationValue);
         float modulatedDelayRight = baseDelayRight * (1.0f + modulationValue);
 
-        // Fetch interpolated samples from delay buffer
+        // Fetch interpolated samples from delay buffer (output will be 100% wet)
         shortDelayOutputLeft[i] = getInterpolatedSample(delayBufferLeft[i], modulatedDelayLeft) + shortFeedbackLeft[i] * feedback;
         shortDelayOutputRight[i] = getInterpolatedSample(delayBufferRight[i], modulatedDelayRight) + shortFeedbackRight[i] * feedback;
-
-        // Incorporate input sample to the delay line (important)
-        shortDelayOutputLeft[i] += inputSampleLeft;
-        shortDelayOutputRight[i] += inputSampleRight;
 
         // Apply all-pass filtering and update feedback
         shortDelayOutputLeft[i] = allPassFiltersShort[i].processSample(shortDelayOutputLeft[i]);
@@ -64,18 +60,14 @@ void ShortDelayProcessor::process(const std::array<float, 8>& shortDelayTimes,
         shortDelayOutputLeft[i] = diffusionAmount * allPassFiltersShort[i].processSample(shortDelayOutputLeft[i]);
         shortDelayOutputRight[i] = diffusionAmount * allPassFiltersShort[i].processSample(shortDelayOutputRight[i]);
 
-//        shortDelayOutputLeft[i] = reverbWashLowpassFilterLeft.processSample(shortDelayOutputLeft[i]);
-//        shortDelayOutputRight[i] = reverbWashLowpassFilterRight.processSample(shortDelayOutputRight[i]);
-        
-        // Update the delay buffer for future feedback (left and right)
-        delayBufferLeft[i][writePosition] = shortDelayOutputLeft[i];
-        delayBufferRight[i][writePosition] = shortDelayOutputRight[i];
+        // Write the input sample to the delay buffer to feed the delay line, but do NOT add it to the output
+        delayBufferLeft[i][writePosition] = inputSampleLeft;
+        delayBufferRight[i][writePosition] = inputSampleRight;
     }
 
     // Update write position in circular delay buffer
     writePosition = (writePosition + 1) % delayBufferSize;
 }
-
 
 
 float ShortDelayProcessor::getInterpolatedSample(const std::vector<float>& buffer, float delayInSamples)
