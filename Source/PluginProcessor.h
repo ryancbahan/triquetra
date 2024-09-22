@@ -125,7 +125,6 @@ private:
     std::array<float, 4> phaseOffsets;
     std::array<float, 4> phaseIncrements;
     float modulationDepth;
-    float removeDCOffset(float input, float& previousInput, float& previousOutput);
     
     float softClip(float sample);
     float applyGain(float sample, float gainFactor);

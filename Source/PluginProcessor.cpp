@@ -222,17 +222,10 @@ void TriquetraAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juc
         float inputSampleLeft = buffer.getSample(0, sample);
         float inputSampleRight = totalNumInputChannels > 1 ? buffer.getSample(1, sample) : inputSampleLeft;
 
-        // Apply DC offset removal
-        float processedInputLeft = removeDCOffset(inputSampleLeft, previousInputLeft, previousOutputLeft);
-        float processedInputRight = removeDCOffset(inputSampleRight, previousInputRight, previousOutputRight);
-
-        processedInputLeft = applyGain(processedInputLeft, inputGain);
-        processedInputRight = applyGain(processedInputRight, inputGain);
-
         // Process delays and feedback without matrix modulation
-        shortDelayProcessor.process(shortDelayTimes, shortFeedbackLeft, shortFeedbackRight, 0.0f, stereoOffset, shortDelayOutputLeft, shortDelayOutputRight, processedInputLeft, processedInputRight);
+        shortDelayProcessor.process(shortDelayTimes, shortFeedbackLeft, shortFeedbackRight, 0.0f, stereoOffset, shortDelayOutputLeft, shortDelayOutputRight, inputSampleLeft, inputSampleRight);
 
-        longDelayProcessor.process(longDelayTimes, longFeedbackLeft, longFeedbackRight, 0.0f, stereoOffset, longDelayOutputLeft, longDelayOutputRight, processedInputLeft, processedInputRight);
+        longDelayProcessor.process(longDelayTimes, longFeedbackLeft, longFeedbackRight, 0.0f, stereoOffset, longDelayOutputLeft, longDelayOutputRight, inputSampleLeft, inputSampleRight);
 
         reverbProcessor.process(shortDelayOutputLeft, shortDelayOutputRight,
                                 longDelayOutputLeft, longDelayOutputRight,
@@ -243,7 +236,7 @@ void TriquetraAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juc
             shortDelayOutputLeft, shortDelayOutputRight,
             longDelayOutputLeft, longDelayOutputRight,
             reverbOutputLeft, reverbOutputRight,
-            processedInputLeft, processedInputRight,
+            inputSampleLeft, inputSampleRight,
             dryMix, wetMix, outputGain
         );
 
@@ -293,21 +286,6 @@ std::pair<float, float> TriquetraAudioProcessor::processAndSumSignals(
     outputSampleRight = juce::jlimit(-1.0f, 1.0f, outputSampleRight);
 
     return {outputSampleLeft, outputSampleRight};
-}
-
-
-inline float TriquetraAudioProcessor::clearDenormals(float value)
-{
-    return std::abs(value) < 1.0e-15f ? 0.0f : value;
-}
-
-float TriquetraAudioProcessor::removeDCOffset(float input, float& previousInput, float& previousOutput)
-{
-    static const float alpha = 0.99f;
-    float output = input - previousInput + alpha * previousOutput;
-    previousInput = input;
-    previousOutput = output;
-    return output;
 }
 
 //==============================================================================

@@ -151,10 +151,11 @@ float LongDelayProcessor::getInterpolatedSample(const std::vector<float>& buffer
     float currentSample = buffer[readPosition];
     float nextSample = buffer[nextPosition];
 
-    return clearDenormals(currentSample + fraction * (nextSample - currentSample));
+//    return clearDenormals(currentSample + fraction * (nextSample - currentSample));
+    return currentSample + fraction * (nextSample - currentSample);
 }
 
-inline float LongDelayProcessor::clearDenormals(float value)
-{
-    return std::abs(value) < 1.0e-15f ? 0.0f : value;
-}
+//inline float LongDelayProcessor::clearDenormals(float value)
+//{
+//    return std::abs(value) < 1.0e-15f ? 0.0f : value;
+//}
