@@ -16,17 +16,17 @@ void ReverbProcessor::prepare(double sampleRate, int samplesPerBlock)
     for (auto& filter : allPassFiltersLong)
     {
         filter.prepare(spec);
-        *filter.coefficients = *juce::dsp::IIR::Coefficients<float>::makeAllPass(sampleRate, 400.0f);
+        *filter.coefficients = *juce::dsp::IIR::Coefficients<float>::makeAllPass(sampleRate, 4000.0f);
     }
 
     for (auto& filter : allPassFiltersShort)
     {
         filter.prepare(spec);
-        *filter.coefficients = *juce::dsp::IIR::Coefficients<float>::makeAllPass(sampleRate, 200.0f);
+        *filter.coefficients = *juce::dsp::IIR::Coefficients<float>::makeAllPass(sampleRate, 1000.0f);
     }
 
     // Set up filter coefficients with steeper slopes
-    auto lowCoefficients = juce::dsp::IIR::Coefficients<float>::makeLowPass(sampleRate, 1000.0f);
+    auto lowCoefficients = juce::dsp::IIR::Coefficients<float>::makeLowPass(sampleRate, 2000.0f, 0.7071f);
     auto highCoefficients = juce::dsp::IIR::Coefficients<float>::makeHighPass(sampleRate, 40.0f, 0.7071f);
     
     // Prepare steep lowpass and highpass filters
@@ -83,17 +83,17 @@ void ReverbProcessor::process(const std::array<float, 8>& shortHadamardLeft,
         }
 
         // Process the signal through long all-pass filters
-        reverbWashLeft[i] = allPassFiltersLong[i % 8].processSample(reverbInputLeft);
-        reverbWashRight[i] = allPassFiltersLong[i % 8].processSample(reverbInputRight);
-
-        // Process through additional diffusion stages (make sure we process all 8 stages)
+        reverbWashLeft[i] = allPassFiltersLong[i].processSample(reverbInputLeft);
+        reverbWashRight[i] = allPassFiltersLong[i].processSample(reverbInputRight);
+//
+//        // Process through additional diffusion stages (make sure we process all 8 stages)
         for (int j = 0; j < 8; ++j)
         {
             reverbWashLeft[i] = allPassFiltersShort[j].processSample(reverbWashLeft[i]);
             reverbWashRight[i] = allPassFiltersShort[j].processSample(reverbWashRight[i]);
         }
 
-        // Introduce cross-feedback with asymmetry for stereo width
+//         Introduce cross-feedback with asymmetry for stereo width
         reverbWashLeft[i] += reverbWashRight[(i + 1) % 8] * crossFeedbackLeftGain;
         reverbWashRight[i] += reverbWashLeft[(i + 2) % 8] * crossFeedbackRightGain;
 
