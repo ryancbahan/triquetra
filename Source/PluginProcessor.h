@@ -58,18 +58,18 @@ public:
     void setStateInformation (const void* data, int sizeInBytes) override;
 
 private:
+    ReverbProcessor reverbProcessor;
+    ShortDelayProcessor shortDelayProcessor;
+    LongDelayProcessor longDelayProcessor;
+    
     std::array<float, 8> shortFeedbackLeft;
     std::array<float, 8> shortFeedbackRight;
     std::array<float, 8> longFeedbackLeft;
     std::array<float, 8> longFeedbackRight;
 
-    int preDelayWritePos = 0;
     std::array<float, 8> reverbWashLeft;
     std::array<float, 8> reverbWashRight;
     float modulationPhase = 0.0f;
-    std::vector<float> preDelayBufferLeft;
-    std::vector<float> preDelayBufferRight;
-    int preDelaySamples = 0;
     float diffusionAmount = 0.0f;
     float modulationFeedbackAmount = 0.0f;
     float bloomFeedbackGain = 0.0f;
@@ -79,23 +79,16 @@ private:
     float previousOutputLeft = 0.0f;
     float previousInputRight = 0.0f;
     float previousOutputRight = 0.0f;
-    float modulationFrequency;  // Add this declaration
-
-    ReverbProcessor reverbProcessor;
-    ShortDelayProcessor shortDelayProcessor;
-    LongDelayProcessor longDelayProcessor;
+    float modulationFrequency;
 
     std::vector<float> delayBuffer;
     int delayBufferSize;
     int writePosition;
-    float lowpassFilter(float input, float cutoff, float sampleRate);
     std::array<float, 8> shortDelayTimes;
     std::array<float, 4> longDelayTimes;
     std::array<float, 8> modulatedShortDelayTimes;
     std::array<float, 8> modulatedLongDelayTimes;
     
-    float getCubicInterpolatedSample(float delayTime);
-    std::array<AllPassFilter, 4> longAllPassFilters;
     std::pair<float, float> processAndSumSignals(
         const std::array<float, 8>& shortDelayOutputLeft,
         const std::array<float, 8>& shortDelayOutputRight,
@@ -107,7 +100,7 @@ private:
         float inputSampleRight,
         float dryMix,
         float wetMix,
-     float outputGain);
+        float outputGain);
 
     float globalFeedback;
     float lastOutputSampleLeft;
@@ -117,80 +110,26 @@ private:
     float longModulationDepth;
     std::array<float, 8> modulationFrequencies;
     std::array<float, 8> modulationPhases;
-    float applyCompression(float sample, float threshold, float ratio);
-    std::pair<float, float> processAndSumSignals(
-        const std::array<float, 4>& shortDelayOutputLeft,
-        const std::array<float, 4>& shortDelayOutputRight,
-        const std::array<float, 8>& longDelayOutputLeft,
-        const std::array<float, 8>& longDelayOutputRight,
-        const std::array<float, 8>& reverbOutputLeft,
-        const std::array<float, 8>& reverbOutputRight,
-        float inputSampleLeft,
-        float inputSampleRight,
-        float dryMix,
-        float wetMix,
-        float outputGain);
-
-    std::array<std::array<float, 4>, 4> hadamardMatrix;
-    juce::dsp::IIR::Filter<float> lowpassFilterLeft;
-    juce::dsp::IIR::Filter<float> lowpassFilterRight;
-    std::array<AllPassFilter, 4> allPassFilters;
     
     std::array<float, 4> basedelayTimes;
     std::array<float, 4> modulatedDelayTimes;
-    void updateLowpassCoefficients();
     
-    juce::dsp::IIR::Filter<float> allPassFilterLeft;
-      juce::dsp::IIR::Filter<float> allPassFilterRight;
-    
-    float lowpassFilterRate = 0.95f; // Controls how quickly the lowpass filter frequency decreases
     std::array<float, 8> diffusionFeedback = {0}; // 4 for left, 4 for right
     float diffusionFeedbackAmount = 0.6f; // Adjust this value to control the amount of diffusion feedback
     float diffusionMix = 0.7f; // Adjust this to control the mix of diffused signal and input
     float diffusionToLongMix = 0.3f; // Adjust this to control how much diffusion is fed into long delays
     float longFeedback = 0.5f;
-
-    float calculateAmplitude(const std::array<float, 4>& signal);
-
-    // LFO-related members
-    float lfoDepth;
-    void initializeLowpassFilter(double sampleRate);
-    // Arrays for All-Pass Filters
-    std::array<juce::dsp::IIR::Filter<float>, 4> allPassFiltersShort;
-    std::array<juce::dsp::IIR::Filter<float>, 4> allPassFiltersLong;
+    
     inline float clearDenormals(float value);
 
     std::array<float, 4> phaseOffsets;
-     std::array<float, 4> phaseIncrements;
-     float modulationDepth;
-    void initializeHadamardMatrix();
-    float getInterpolatedSample(float delayTime);
-    float generateLFOSample(int lfoIndex);
-    void updateLFOs();
-    void applyHadamardToLFOs(std::array<float, 4>& lfoOutputs);
+    std::array<float, 4> phaseIncrements;
+    float modulationDepth;
     float removeDCOffset(float input, float& previousInput, float& previousOutput);
-    template<size_t N>
-    std::array<float, N> applyHadamardMixing(const std::array<float, N>& inputs)
-    {
-        std::array<float, N> outputs;
-        for (size_t i = 0; i < N; ++i)
-        {
-            outputs[i] = 0.0f;
-            for (size_t j = 0; j < N; ++j)
-            {
-                outputs[i] += hadamardMatrix[i % 4][j % 4] * inputs[j];
-            }
-        }
-        return outputs;
-    }
-    
-    float reverbWashDucking = 0.0f;  // Amount of ducking (0.0 to 1.0)
-    float reverbWashDecay = 0.99f;   // Adjustable decay factor
-    float reverbWashThreshold = 0.01f; 
     
     float softClip(float sample);
     float applyGain(float sample, float gainFactor);
-    float highpassFilter(float input, float cutoff, float sampleRate);
+
     float inputGain = 1.0f;
     float shortDelayGain = 1.0f;
     float longDelayGain = 1.0f;
