@@ -15,6 +15,26 @@ LongDelayProcessor::LongDelayProcessor()
     }
 }
 
+void LongDelayProcessor::reset()
+{
+    // Clear the delay buffers
+    for (auto& buffer : delayBufferLeft)
+        std::fill(buffer.begin(), buffer.end(), 0.0f);
+
+    for (auto& buffer : delayBufferRight)
+        std::fill(buffer.begin(), buffer.end(), 0.0f);
+
+    // Reset the write position to the start
+    writePosition = 0;
+
+    // Reset the all-pass filters to their initial state
+    for (auto& filter : allPassFiltersLong)
+        filter.reset();
+
+    // reverbWashLowpassFilterLeft.reset();
+    // reverbWashLowpassFilterRight.reset();
+}
+
 void LongDelayProcessor::prepare(double newSampleRate, int numChannels, float newFeedback, float newBloomFeedbackGain, float newModulationFeedbackAmount, float newAttenuationFactor, float newLongSubdivisionsFactor, float newDecayRate)
 {
     sampleRate = newSampleRate;

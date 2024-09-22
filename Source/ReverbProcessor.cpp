@@ -6,6 +6,27 @@ ReverbProcessor::ReverbProcessor()
     // Constructor is now empty as we set up filters in the prepare method
 }
 
+void ReverbProcessor::reset()
+{
+    // Reset all-pass filters for long and short delays
+    for (auto& filter : allPassFiltersLong)
+        filter.reset();
+    
+    for (auto& filter : allPassFiltersShort)
+        filter.reset();
+    
+    // Reset reverb wash arrays (clears out any previous feedback or accumulation)
+    reverbWashLeft.fill(0.0f);
+    reverbWashRight.fill(0.0f);
+    
+    // Reset modulation phase
+    reverbWashPhase = 0.0f;
+
+    // lowpassFilter.reset();
+    // highpassFilter.reset();
+}
+
+
 void ReverbProcessor::prepare(double sampleRate, int samplesPerBlock)
 {
     this->sampleRate = sampleRate;

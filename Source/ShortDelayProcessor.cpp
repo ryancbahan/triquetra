@@ -5,6 +5,23 @@ ShortDelayProcessor::ShortDelayProcessor()
     // Constructor
 }
 
+void ShortDelayProcessor::reset()
+{
+    // Clear the delay buffers
+    for (auto& buffer : delayBufferLeft)
+        std::fill(buffer.begin(), buffer.end(), 0.0f);
+
+    for (auto& buffer : delayBufferRight)
+        std::fill(buffer.begin(), buffer.end(), 0.0f);
+
+    // Reset the write position to the start
+    writePosition = 0;
+
+    // Reset the all-pass filters to their initial state
+    for (auto& filter : allPassFiltersShort)
+        filter.reset();
+}
+
 void ShortDelayProcessor::prepare(double newSampleRate, int numChannels, float newFeedback, float newDiffusionAmount, float newModulationFeedbackAmount)
 {
     sampleRate = newSampleRate;
@@ -40,6 +57,8 @@ void ShortDelayProcessor::process(const std::array<float, 8>& shortDelayTimes,
                                   std::array<float, 8>& shortDelayOutputRight,
                                   float inputSampleLeft, float inputSampleRight)
 {
+    feedback = juce::jlimit(0.0f, 1.0f, feedback);
+
     for (int i = 0; i < 8; ++i)
     {
         float baseDelayLeft = shortDelayTimes[i] * sampleRate;

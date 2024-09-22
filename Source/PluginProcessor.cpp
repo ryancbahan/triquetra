@@ -60,6 +60,7 @@ TriquetraAudioProcessor::TriquetraAudioProcessor()
     
     mixParameter = parameters.getRawParameterValue("mix");
     delayTimeParameter = parameters.getRawParameterValue("delayTime");
+    feedbackParameter = parameters.getRawParameterValue("feedback");
 }
 
 TriquetraAudioProcessor::~TriquetraAudioProcessor()
@@ -149,8 +150,10 @@ void TriquetraAudioProcessor::changeProgramName (int index, const juce::String& 
 
 void TriquetraAudioProcessor::releaseResources()
 {
-    // When playback stops, you can use this as an opportunity to free up any
-    // spare memory, etc.
+    shortDelayProcessor.reset();
+    longDelayProcessor.reset();
+    reverbProcessor.reset();
+    delayBuffer.clear();
 }
 
 #ifndef JucePlugin_PreferredChannelConfigurations
@@ -254,7 +257,6 @@ void TriquetraAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juc
 
     float mixValue = mixParameter->load();
     float feedbackValue = feedbackParameter->load();
-
 
     if (totalNumOutputChannels < 2) return;
 

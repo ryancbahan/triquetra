@@ -8,6 +8,7 @@ class LongDelayProcessor
 public:
     LongDelayProcessor();
     void prepare(double newSampleRate, int numChannels, float newFeedback, float newBloomFeedbackGain, float newModulationFeedbackAmount, float newAttenuationFactor, float newLongSubdivisionsFactor, float newDecayRate);
+    void reset();
     
     void process(const std::array<float, 4>& longDelayTimes,
                  std::array<float, 8>& longFeedbackLeft,
