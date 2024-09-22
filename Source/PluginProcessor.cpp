@@ -78,6 +78,10 @@ juce::AudioProcessorValueTreeState::ParameterLayout TriquetraAudioProcessor::cre
         juce::ParameterID("delayTime", 2), "Delay time",
         juce::NormalisableRange<float>(0.0f, 2.0f), 0.5f));
     
+    params.push_back(std::make_unique<juce::AudioParameterFloat>(
+        juce::ParameterID("feedback", 3), "Feedback",
+        juce::NormalisableRange<float>(0.0f, 1.0f), 0.5f));
+    
     return { params.begin(), params.end() };
 }
 
@@ -249,6 +253,8 @@ void TriquetraAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juc
     float smoothedDelayTime = delayTimeSmoothed.getNextValue();  // Get the smoothed value
 
     float mixValue = mixParameter->load();
+    float feedbackValue = feedbackParameter->load();
+
 
     if (totalNumOutputChannels < 2) return;
 

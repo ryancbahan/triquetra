@@ -30,6 +30,8 @@ public:
     juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout();
     std::atomic<float>* mixParameter = nullptr;
     std::atomic<float>* delayTimeParameter = nullptr;
+    std::atomic<float>* feedbackParameter = nullptr;
+
     juce::SmoothedValue<float> delayTimeSmoothed;
 
     void prepareToPlay (double sampleRate, int samplesPerBlock) override;
