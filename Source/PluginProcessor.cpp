@@ -325,11 +325,11 @@ void TriquetraAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juc
         // Process delays and feedback without matrix modulation
         shortDelayProcessor.process(shortDelayTimes, shortFeedbackLeft, shortFeedbackRight, 0.0f, stereoOffset, shortDelayOutputLeft, shortDelayOutputRight, processedInputLeft, processedInputRight);
 
-//        longDelayProcessor.process(longDelayTimes, longFeedbackLeft, longFeedbackRight, 0.0f, stereoOffset, longDelayOutputLeft, longDelayOutputRight, processedInputLeft, processedInputRight);
-//
-//        reverbProcessor.process(shortDelayOutputLeft, shortDelayOutputRight,
-//                                longDelayOutputLeft, longDelayOutputRight,
-//                                reverbOutputLeft, reverbOutputRight);
+        longDelayProcessor.process(longDelayTimes, longFeedbackLeft, longFeedbackRight, 0.0f, stereoOffset, longDelayOutputLeft, longDelayOutputRight, processedInputLeft, processedInputRight);
+
+        reverbProcessor.process(shortDelayOutputLeft, shortDelayOutputRight,
+                                longDelayOutputLeft, longDelayOutputRight,
+                                reverbOutputLeft, reverbOutputRight);
 
         // Combine outputs from the 3 processors for the final mix
         auto [outputSampleLeft, outputSampleRight] = processAndSumSignals(
@@ -365,19 +365,23 @@ std::pair<float, float> TriquetraAudioProcessor::processAndSumSignals(
     float outputGain)
 {
     // Combine short, long delay, and reverb output for wet signal
-//    float wetSignalLeft = (shortDelayOutputLeft[0] + shortDelayOutputLeft[1] + shortDelayOutputLeft[2] + shortDelayOutputLeft[3] + shortDelayOutputLeft[4] + shortDelayOutputLeft[5] + shortDelayOutputLeft[6] + shortDelayOutputLeft[7]) * 0.25f
-//                        + (longDelayOutputLeft[0] + longDelayOutputLeft[1] + longDelayOutputLeft[2] + longDelayOutputLeft[3]
-//                        + longDelayOutputLeft[4] + longDelayOutputLeft[5] + longDelayOutputLeft[6] + longDelayOutputLeft[7]) * 0.125f
-//                        + (reverbOutputRight[0] + reverbOutputRight[1] + reverbOutputRight[2] + reverbOutputRight[3]);
-//
-//    float wetSignalRight = (shortDelayOutputRight[0] + shortDelayOutputRight[1] + shortDelayOutputRight[2] + shortDelayOutputRight[3] + shortDelayOutputRight[4] + shortDelayOutputRight[5] + shortDelayOutputRight[6] + shortDelayOutputRight[7]) * 0.25f
-//                         + (longDelayOutputRight[0] + longDelayOutputRight[1] + longDelayOutputRight[2] + longDelayOutputRight[3]
-//                         + longDelayOutputRight[4] + longDelayOutputRight[5] + longDelayOutputRight[6] + longDelayOutputRight[7]) * 0.125f
-//                         + (reverbOutputLeft[0] + reverbOutputLeft[1] + reverbOutputLeft[2] + reverbOutputLeft[3]);
-    
-    float wetSignalLeft = (shortDelayOutputLeft[0] + shortDelayOutputLeft[1] + shortDelayOutputLeft[2] + shortDelayOutputLeft[3] + shortDelayOutputLeft[4] + shortDelayOutputLeft[5] + shortDelayOutputLeft[6] + shortDelayOutputLeft[7]);
+    float wetSignalLeft = (shortDelayOutputLeft[0] + shortDelayOutputLeft[1] + shortDelayOutputLeft[2] + shortDelayOutputLeft[3] + shortDelayOutputLeft[4] + shortDelayOutputLeft[5] + shortDelayOutputLeft[6] + shortDelayOutputLeft[7]) * 0.25f
+                        + (longDelayOutputLeft[0] + longDelayOutputLeft[1] + longDelayOutputLeft[2] + longDelayOutputLeft[3]
+                        + longDelayOutputLeft[4] + longDelayOutputLeft[5] + longDelayOutputLeft[6] + longDelayOutputLeft[7]) * 0.125f
+                        + (reverbOutputRight[0] + reverbOutputRight[1] + reverbOutputRight[2] + reverbOutputRight[3] + reverbOutputRight[4] + reverbOutputRight[5] + reverbOutputRight[6] + reverbOutputRight[7]) * 0.5f;
 
-    float wetSignalRight = (shortDelayOutputRight[0] + shortDelayOutputRight[1] + shortDelayOutputRight[2] + shortDelayOutputRight[3] + shortDelayOutputRight[4] + shortDelayOutputRight[5] + shortDelayOutputRight[6] + shortDelayOutputRight[7]);
+    float wetSignalRight = (shortDelayOutputRight[0] + shortDelayOutputRight[1] + shortDelayOutputRight[2] + shortDelayOutputRight[3] + shortDelayOutputRight[4] + shortDelayOutputRight[5] + shortDelayOutputRight[6] + shortDelayOutputRight[7]) * 0.25f
+                         + (longDelayOutputRight[0] + longDelayOutputRight[1] + longDelayOutputRight[2] + longDelayOutputRight[3]
+                         + longDelayOutputRight[4] + longDelayOutputRight[5] + longDelayOutputRight[6] + longDelayOutputRight[7]) * 0.125f
+                         + (reverbOutputLeft[0] + reverbOutputLeft[1] + reverbOutputLeft[2] + reverbOutputLeft[3] + reverbOutputLeft[4] + reverbOutputLeft[5] + reverbOutputLeft[6] + reverbOutputLeft[7]) * 0.5f;
+    
+//        float wetSignalLeft = (reverbOutputRight[0] + reverbOutputRight[1] + reverbOutputRight[2] + reverbOutputRight[3] + reverbOutputRight[4] + reverbOutputRight[5] + reverbOutputRight[6] + reverbOutputRight[7]);
+//    
+//        float wetSignalRight = (reverbOutputLeft[0] + reverbOutputLeft[1] + reverbOutputLeft[2] + reverbOutputLeft[3] + reverbOutputLeft[4] + reverbOutputLeft[5] + reverbOutputLeft[6] + reverbOutputLeft[7]);
+    
+//    float wetSignalLeft = (shortDelayOutputLeft[0] + shortDelayOutputLeft[1] + shortDelayOutputLeft[2] + shortDelayOutputLeft[3] + shortDelayOutputLeft[4] + shortDelayOutputLeft[5] + shortDelayOutputLeft[6] + shortDelayOutputLeft[7]);
+//
+//    float wetSignalRight = (shortDelayOutputRight[0] + shortDelayOutputRight[1] + shortDelayOutputRight[2] + shortDelayOutputRight[3] + shortDelayOutputRight[4] + shortDelayOutputRight[5] + shortDelayOutputRight[6] + shortDelayOutputRight[7]);
 
     // Combine wet and dry signals, apply final output mix
     float outputSampleLeft = inputSampleLeft * dryMix + wetSignalLeft * wetMix;
