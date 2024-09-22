@@ -34,15 +34,8 @@ void ShortDelayProcessor::prepare(double newSampleRate, int numChannels, float n
     for (auto& filter : allPassFiltersShort)
         filter.prepare(spec);
 
-//    reverbWashLowpassFilterLeft.prepare(spec);
-//    reverbWashLowpassFilterRight.prepare(spec);
-//
-//    // Set lowpass filter coefficients
-//    *reverbWashLowpassFilterLeft.coefficients = *juce::dsp::IIR::Coefficients<float>::makeLowPass(sampleRate, 12000.0f);
-//    *reverbWashLowpassFilterRight.coefficients = *juce::dsp::IIR::Coefficients<float>::makeLowPass(sampleRate, 12000.0f);
-
     // Initialize delay buffers
-    delayBufferSize = static_cast<int>(sampleRate * 4.0); // 2 seconds of delay buffer
+    delayBufferSize = static_cast<int>(sampleRate * 4.0); // 4 seconds of delay buffer
     delayBufferLeft.resize(8, std::vector<float>(delayBufferSize, 0.0f));
     delayBufferRight.resize(8, std::vector<float>(delayBufferSize, 0.0f));
 
@@ -56,7 +49,7 @@ void ShortDelayProcessor::process(const std::array<float, 8>& shortDelayTimes,
                                   std::array<float, 8>& shortDelayOutputLeft,
                                   std::array<float, 8>& shortDelayOutputRight,
                                   float inputSampleLeft, float inputSampleRight,
-                                  float currentFeedback) 
+                                  float currentFeedback)
 {
     currentFeedback = juce::jlimit(0.0f, 1.0f, currentFeedback);  // Ensure feedback is in the valid range
 
@@ -65,8 +58,9 @@ void ShortDelayProcessor::process(const std::array<float, 8>& shortDelayTimes,
         float baseDelayLeft = shortDelayTimes[i] * sampleRate;
         float baseDelayRight = baseDelayLeft + stereoOffset;
 
-        float modulatedDelayLeft = baseDelayLeft * (1.0f + modulationValue);
-        float modulatedDelayRight = baseDelayRight * (1.0f + modulationValue);
+        // Modulate delay times and clamp them to prevent overflow
+        float modulatedDelayLeft = juce::jlimit(0.0f, static_cast<float>(delayBufferSize - 1), baseDelayLeft * (1.0f + modulationValue));
+        float modulatedDelayRight = juce::jlimit(0.0f, static_cast<float>(delayBufferSize - 1), baseDelayRight * (1.0f + modulationValue));
 
         // Fetch interpolated samples from delay buffer (output will be 100% wet)
         shortDelayOutputLeft[i] = getInterpolatedSample(delayBufferLeft[i], modulatedDelayLeft) + shortFeedbackLeft[i] * currentFeedback;
@@ -88,7 +82,6 @@ void ShortDelayProcessor::process(const std::array<float, 8>& shortDelayTimes,
     // Update write position in circular delay buffer
     writePosition = (writePosition + 1) % delayBufferSize;
 }
-
 
 float ShortDelayProcessor::getInterpolatedSample(const std::vector<float>& buffer, float delayInSamples)
 {

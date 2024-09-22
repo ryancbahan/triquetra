@@ -30,9 +30,6 @@ void LongDelayProcessor::reset()
     // Reset the all-pass filters to their initial state
     for (auto& filter : allPassFiltersLong)
         filter.reset();
-
-    // reverbWashLowpassFilterLeft.reset();
-    // reverbWashLowpassFilterRight.reset();
 }
 
 void LongDelayProcessor::prepare(double newSampleRate, int numChannels, float newFeedback, float newBloomFeedbackGain, float newModulationFeedbackAmount, float newAttenuationFactor, float newLongSubdivisionsFactor, float newDecayRate)
@@ -53,14 +50,6 @@ void LongDelayProcessor::prepare(double newSampleRate, int numChannels, float ne
         filter.prepare(spec);
     }
 
-//    reverbWashLowpassFilterLeft.reset();
-//    reverbWashLowpassFilterRight.reset();
-//    reverbWashLowpassFilterLeft.prepare(spec);
-//    reverbWashLowpassFilterRight.prepare(spec);
-//
-//    *reverbWashLowpassFilterLeft.coefficients = *juce::dsp::IIR::Coefficients<float>::makeLowPass(sampleRate, 12000.0f);
-//    *reverbWashLowpassFilterRight.coefficients = *juce::dsp::IIR::Coefficients<float>::makeLowPass(sampleRate, 12000.0f);
-
     delayBufferSize = static_cast<int>(sampleRate * 4.0);
     delayBufferLeft.resize(8, std::vector<float>(delayBufferSize, 0.0f));
     delayBufferRight.resize(8, std::vector<float>(delayBufferSize, 0.0f));
@@ -75,7 +64,7 @@ void LongDelayProcessor::process(const std::array<float, 4>& longDelayTimes,
                                  std::array<float, 8>& longHadamardLeft,
                                  std::array<float, 8>& longHadamardRight,
                                  float inputSampleLeft, float inputSampleRight,
-                                 float currentFeedback) 
+                                 float currentFeedback)
 {
     const float attenuationFactor = 1.0f / sqrt(4.0f);
 
@@ -93,9 +82,9 @@ void LongDelayProcessor::process(const std::array<float, 4>& longDelayTimes,
         float baseDelayLeft = std::max(0.0f, longDelayTimes[i] * static_cast<float>(sampleRate));
         float baseDelayRight = std::max(0.0f, baseDelayLeft - stereoOffset);
 
-        // Original delay line
-        float originalDelayLeft = baseDelayLeft * (1.0f + modulationValue);
-        float originalDelayRight = baseDelayRight * (1.0f + modulationValue);
+        // Modulate delay times and clamp them to prevent overflow
+        float originalDelayLeft = juce::jlimit(0.0f, static_cast<float>(delayBufferSize - 1), baseDelayLeft * (1.0f + modulationValue));
+        float originalDelayRight = juce::jlimit(0.0f, static_cast<float>(delayBufferSize - 1), baseDelayRight * (1.0f + modulationValue));
 
         // Get samples for original delays
         longHadamardLeft[i] = getInterpolatedSample(delayBufferLeft[i], originalDelayLeft);
@@ -114,13 +103,12 @@ void LongDelayProcessor::process(const std::array<float, 4>& longDelayTimes,
             irregularDelayRight *= longSubdivisionsFactor;
         }
 
-        // Add to cumulative irregular delay
+        // Add to cumulative irregular delay and clamp to avoid overflow
         cumulativeIrregularDelayLeft += irregularDelayLeft;
         cumulativeIrregularDelayRight += irregularDelayRight;
 
-        // Ensure delays don't exceed buffer size
-        cumulativeIrregularDelayLeft = std::min(static_cast<float>(delayBufferSize - 1), cumulativeIrregularDelayLeft);
-        cumulativeIrregularDelayRight = std::min(static_cast<float>(delayBufferSize - 1), cumulativeIrregularDelayRight);
+        cumulativeIrregularDelayLeft = juce::jlimit(0.0f, static_cast<float>(delayBufferSize - 1), cumulativeIrregularDelayLeft);
+        cumulativeIrregularDelayRight = juce::jlimit(0.0f, static_cast<float>(delayBufferSize - 1), cumulativeIrregularDelayRight);
 
         // Get samples for irregular delays
         float irregularSampleLeft = getInterpolatedSample(delayBufferLeft[i], cumulativeIrregularDelayLeft);
@@ -158,7 +146,6 @@ void LongDelayProcessor::process(const std::array<float, 4>& longDelayTimes,
     writePosition = (writePosition + 1) % delayBufferSize;
 }
 
-
 float LongDelayProcessor::getInterpolatedSample(const std::vector<float>& buffer, float delayInSamples)
 {
     int readPosition = (writePosition - static_cast<int>(delayInSamples) + delayBufferSize) % delayBufferSize;
@@ -169,11 +156,6 @@ float LongDelayProcessor::getInterpolatedSample(const std::vector<float>& buffer
     float currentSample = buffer[readPosition];
     float nextSample = buffer[nextPosition];
 
-//    return clearDenormals(currentSample + fraction * (nextSample - currentSample));
     return currentSample + fraction * (nextSample - currentSample);
 }
 
-//inline float LongDelayProcessor::clearDenormals(float value)
-//{
-//    return std::abs(value) < 1.0e-15f ? 0.0f : value;
-//}
