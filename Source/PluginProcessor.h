@@ -148,6 +148,10 @@ private:
     // Band-pass filters for midrange emphasis
     juce::dsp::IIR::Filter<float> bandPassFilterLeft;
     juce::dsp::IIR::Filter<float> bandPassFilterRight;
+    
+    std::array<float, 8> shortDelayOutputLeft, shortDelayOutputRight;
+    std::array<float, 8> longDelayOutputLeft, longDelayOutputRight;
+    std::array<float, 8> reverbOutputLeft, reverbOutputRight;
 
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (TriquetraAudioProcessor)
