@@ -30,7 +30,8 @@ private:
     TriquetraAudioProcessor& audioProcessor;
     juce::Slider mixParamSlider;
     juce::Slider delayTimeParamSlider;
-    
+    juce::Slider feedbackParamSlider;
+    juce::Slider depthParamSlider;
     void setupKnob(juce::Slider& slider, juce::RangedAudioParameter* parameter,
                        int x, int y, int width, int height, const juce::String& labelText);
     

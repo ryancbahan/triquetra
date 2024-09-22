@@ -9,7 +9,7 @@ public:
     ReverbProcessor();
 
     void prepare(double sampleRate, int samplesPerBlock);
-
+    void reset();
     void process(const std::array<float, 8>& shortHadamardLeft,
                  const std::array<float, 8>& shortHadamardRight,
                  const std::array<float, 8>& longHadamardLeft,

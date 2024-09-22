@@ -9,7 +9,7 @@ class ShortDelayProcessor
 public:
     ShortDelayProcessor();
     void prepare(double sampleRate, int numChannels, float feedback, float diffusionAmount, float modulationFeedbackAmount);
-    
+    void reset();
     // Return processed arrays with Hadamard mixed data
     void process(const std::array<float, 8>& shortDelayTimes,
                                       const std::array<float, 8>& shortFeedbackLeft,
@@ -17,7 +17,8 @@ public:
                                       float modulationValue, float stereoOffset,
                                       std::array<float, 8>& shortDelayOutputLeft,
                                       std::array<float, 8>& shortDelayOutputRight,
-                 float inputSampleLeft, float inputSampleRight);
+                                      float inputSampleLeft, float inputSampleRight,
+                                      float currentFeedback);
 
 private:
     float getInterpolatedSample(const std::vector<float>& buffer, float delayInSamples);

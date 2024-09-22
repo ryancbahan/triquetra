@@ -8,14 +8,16 @@ class LongDelayProcessor
 public:
     LongDelayProcessor();
     void prepare(double newSampleRate, int numChannels, float newFeedback, float newBloomFeedbackGain, float newModulationFeedbackAmount, float newAttenuationFactor, float newLongSubdivisionsFactor, float newDecayRate);
+    void reset();
     
     void process(const std::array<float, 4>& longDelayTimes,
-                 std::array<float, 8>& longFeedbackLeft,
-                 std::array<float, 8>& longFeedbackRight,
-                 float modulationValue, float stereoOffset,
-                 std::array<float, 8>& longHadamardLeft,
-                 std::array<float, 8>& longHadamardRight,
-                 float inputSampleLeft, float inputSampleRight);
+                                     std::array<float, 8>& longFeedbackLeft,
+                                     std::array<float, 8>& longFeedbackRight,
+                                     float modulationValue, float stereoOffset,
+                                     std::array<float, 8>& longHadamardLeft,
+                                     std::array<float, 8>& longHadamardRight,
+                                     float inputSampleLeft, float inputSampleRight,
+                    float currentFeedback);
 
 
 private:

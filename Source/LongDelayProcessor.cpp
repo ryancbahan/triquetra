@@ -15,6 +15,26 @@ LongDelayProcessor::LongDelayProcessor()
     }
 }
 
+void LongDelayProcessor::reset()
+{
+    // Clear the delay buffers
+    for (auto& buffer : delayBufferLeft)
+        std::fill(buffer.begin(), buffer.end(), 0.0f);
+
+    for (auto& buffer : delayBufferRight)
+        std::fill(buffer.begin(), buffer.end(), 0.0f);
+
+    // Reset the write position to the start
+    writePosition = 0;
+
+    // Reset the all-pass filters to their initial state
+    for (auto& filter : allPassFiltersLong)
+        filter.reset();
+
+    // reverbWashLowpassFilterLeft.reset();
+    // reverbWashLowpassFilterRight.reset();
+}
+
 void LongDelayProcessor::prepare(double newSampleRate, int numChannels, float newFeedback, float newBloomFeedbackGain, float newModulationFeedbackAmount, float newAttenuationFactor, float newLongSubdivisionsFactor, float newDecayRate)
 {
     sampleRate = newSampleRate;
@@ -54,7 +74,8 @@ void LongDelayProcessor::process(const std::array<float, 4>& longDelayTimes,
                                  float modulationValue, float stereoOffset,
                                  std::array<float, 8>& longHadamardLeft,
                                  std::array<float, 8>& longHadamardRight,
-                                 float inputSampleLeft, float inputSampleRight)
+                                 float inputSampleLeft, float inputSampleRight,
+                                 float currentFeedback) 
 {
     const float attenuationFactor = 1.0f / sqrt(4.0f);
 
@@ -124,13 +145,9 @@ void LongDelayProcessor::process(const std::array<float, 4>& longDelayTimes,
         longHadamardLeft[i] *= attenuationFactor;
         longHadamardRight[i] *= attenuationFactor;
 
-        // Apply lowpass filtering
-//        longHadamardLeft[i] = reverbWashLowpassFilterLeft.processSample(longHadamardLeft[i]);
-//        longHadamardRight[i] = reverbWashLowpassFilterRight.processSample(longHadamardRight[i]);
-        
-        // Calculate feedback using the global feedback control
-        longFeedbackLeft[i] = juce::jlimit(-0.95f, 0.95f, (longHadamardLeft[i] + longHadamardLeft[i + 4]) * feedback);
-        longFeedbackRight[i] = juce::jlimit(-0.95f, 0.95f, (longHadamardRight[i] + longHadamardRight[i + 4]) * feedback);
+        // Calculate feedback using the dynamic feedback parameter
+        longFeedbackLeft[i] = juce::jlimit(-0.95f, 0.95f, (longHadamardLeft[i] + longHadamardLeft[i + 4]) * currentFeedback);
+        longFeedbackRight[i] = juce::jlimit(-0.95f, 0.95f, (longHadamardRight[i] + longHadamardRight[i + 4]) * currentFeedback);
         
         // Update the delay buffer with the attenuated input sample and feedback
         delayBufferLeft[i][writePosition] = attenuatedInputLeft + longFeedbackLeft[i];
@@ -140,6 +157,7 @@ void LongDelayProcessor::process(const std::array<float, 4>& longDelayTimes,
     // Increment write position in circular delay buffer
     writePosition = (writePosition + 1) % delayBufferSize;
 }
+
 
 float LongDelayProcessor::getInterpolatedSample(const std::vector<float>& buffer, float delayInSamples)
 {
