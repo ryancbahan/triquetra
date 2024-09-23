@@ -68,6 +68,8 @@ TriquetraAudioProcessor::TriquetraAudioProcessor()
     delayTimeParameter = parameters.getRawParameterValue("delayTime");
     feedbackParameter = parameters.getRawParameterValue("feedback");
     depthParameter = parameters.getRawParameterValue("depth");
+    clockParameter = parameters.getRawParameterValue("clock");
+
 }
 
 TriquetraAudioProcessor::~TriquetraAudioProcessor()
@@ -106,6 +108,10 @@ juce::AudioProcessorValueTreeState::ParameterLayout TriquetraAudioProcessor::cre
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
         juce::ParameterID("depth", 4), "Depth",
         juce::NormalisableRange<float>(0.0f, 2.0f), 0.5f));
+    
+    params.push_back(std::make_unique<juce::AudioParameterFloat>(
+        juce::ParameterID("clock", 4), "Clock",
+        juce::NormalisableRange<float>(0.0f, 1.0f), 1.0f));
     
     return { params.begin(), params.end() };
 }
@@ -282,7 +288,8 @@ void TriquetraAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juc
     float mixValue = mixParameter->load();
     float feedbackValue = feedbackParameter->load();
     float depthValue = depthParameter->load() / smoothedDelayTime;
-    
+    float clockValue = clockParameter->load();
+
     updateModulation(getSampleRate(), depthValue);
 
     if (totalNumOutputChannels < 2) return;
@@ -293,6 +300,15 @@ void TriquetraAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juc
 
     float sampleRate = static_cast<float>(getSampleRate());
     const float stereoOffset = 0.02f * sampleRate;
+
+    // Hardcoded clock parameter (adjust this value to test different clock rates)
+    // 1.0 means normal rate, 0.5 means half rate, 0.25 quarter rate, etc.
+    const float clockRate = clockValue;
+
+    // Variables for clock-based sample processing
+    static float lastProcessedWetLeft = 0.0f;
+    static float lastProcessedWetRight = 0.0f;
+    static float clockAccumulator = 0.0f;
 
     // Dynamically calculate longDelayTimes based on smoothed delay time
     longDelayTimes[0] = smoothedDelayTime;  // First value is the smoothed delay time
@@ -316,35 +332,51 @@ void TriquetraAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juc
         float inputSampleLeft = buffer.getSample(0, sample);
         float inputSampleRight = totalNumInputChannels > 1 ? buffer.getSample(1, sample) : inputSampleLeft;
 
-        // Process delays and feedback without matrix modulation
-        shortDelayProcessor.process(shortDelayTimes, shortFeedbackLeft, shortFeedbackRight, modulationValue, stereoOffset, shortDelayOutputLeft, shortDelayOutputRight, inputSampleLeft, inputSampleRight, feedbackValue);
+        float wetSignalLeft, wetSignalRight;
 
-        longDelayProcessor.process(longDelayTimes, longFeedbackLeft, longFeedbackRight, modulationValue, stereoOffset, longDelayOutputLeft, longDelayOutputRight, inputSampleLeft, inputSampleRight, feedbackValue);
+        // Clock-based wet signal processing
+        clockAccumulator += clockRate;
+        if (clockAccumulator >= 1.0f)
+        {
+            clockAccumulator -= 1.0f;
 
-//        reverbProcessor.process(shortDelayOutputLeft, shortDelayOutputRight,
-//                                longDelayOutputLeft, longDelayOutputRight,
-//                                reverbOutputLeft, reverbOutputRight);
+            // Process delays and feedback without matrix modulation
+            shortDelayProcessor.process(shortDelayTimes, shortFeedbackLeft, shortFeedbackRight, modulationValue, stereoOffset, shortDelayOutputLeft, shortDelayOutputRight, inputSampleLeft, inputSampleRight, feedbackValue);
 
-        // Combine outputs from the 3 processors for the final mix
-        auto [outputSampleLeft, outputSampleRight, wetSignalLeft, wetSignalRight] = processAndSumSignals(
-            shortDelayOutputLeft, shortDelayOutputRight,
-            longDelayOutputLeft, longDelayOutputRight,
-            reverbOutputLeft, reverbOutputRight,
-            inputSampleLeft, inputSampleRight,
-            1.0 - mixValue, mixValue, outputGain
-        );
+            longDelayProcessor.process(longDelayTimes, longFeedbackLeft, longFeedbackRight, modulationValue, stereoOffset, longDelayOutputLeft, longDelayOutputRight, inputSampleLeft, inputSampleRight, feedbackValue);
 
-        // Write final output to buffer
+            // Combine outputs from the processors for the wet signal
+            std::tie(std::ignore, std::ignore, wetSignalLeft, wetSignalRight) = processAndSumSignals(
+                shortDelayOutputLeft, shortDelayOutputRight,
+                longDelayOutputLeft, longDelayOutputRight,
+                reverbOutputLeft, reverbOutputRight,
+                inputSampleLeft, inputSampleRight,
+                0.0f, 1.0f, outputGain  // Use 0.0f for dry mix and 1.0f for wet mix
+            );
+
+            lastProcessedWetLeft = wetSignalLeft;
+            lastProcessedWetRight = wetSignalRight;
+
+            // Update delay buffer for feedback
+            delayBuffer[writePosition] = (wetSignalLeft + wetSignalRight) * 0.5f * feedbackGain;
+            writePosition = (writePosition + 1) % delayBufferSize;
+        }
+        else
+        {
+            // Use the last processed wet samples
+            wetSignalLeft = lastProcessedWetLeft;
+            wetSignalRight = lastProcessedWetRight;
+        }
+
+        // Mix dry and wet signals
+        float outputSampleLeft = (1.0f - mixValue) * inputSampleLeft + mixValue * wetSignalLeft;
+        float outputSampleRight = (1.0f - mixValue) * inputSampleRight + mixValue * wetSignalRight;
+
+        // Write the final mixed sample to the output buffer
         buffer.setSample(0, sample, outputSampleLeft);
         buffer.setSample(1, sample, outputSampleRight);
-
-        // Update delay buffer for feedback
-        delayBuffer[writePosition] = (wetSignalLeft + wetSignalRight) * 0.5f * feedbackGain;
-        writePosition = (writePosition + 1) % delayBufferSize;
     }
 }
-
-
 
 std::tuple<float, float, float, float> TriquetraAudioProcessor::processAndSumSignals(
     const std::array<float, 8>& shortDelayOutputLeft,

@@ -21,6 +21,7 @@ TriquetraAudioProcessorEditor::TriquetraAudioProcessorEditor (TriquetraAudioProc
     setupKnob(delayTimeParamSlider, static_cast<juce::AudioParameterFloat*>(params.getUnchecked(1)), 100, 12, 100, 100, "Delay Time");
     setupKnob(feedbackParamSlider, static_cast<juce::AudioParameterFloat*>(params.getUnchecked(2)), 200, 12, 100, 100, "Feedback");
     setupKnob(depthParamSlider, static_cast<juce::AudioParameterFloat*>(params.getUnchecked(3)), 300, 12, 100, 100, "Depth");
+    setupKnob(clockParamSlider, static_cast<juce::AudioParameterFloat*>(params.getUnchecked(4)), 200, 150, 100, 100, "Clock");
 
 
 }
