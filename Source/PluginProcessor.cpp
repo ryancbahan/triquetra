@@ -294,6 +294,15 @@ void TriquetraAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juc
     float sampleRate = static_cast<float>(getSampleRate());
     const float stereoOffset = 0.02f * sampleRate;
 
+    // Hardcoded clock parameter (adjust this value to test different clock rates)
+    // 1.0 means normal rate, 0.5 means half rate, 0.25 quarter rate, etc.
+    const float clockRate = 0.25f;
+
+    // Variables for clock-based sample processing
+    static float lastProcessedSampleLeft = 0.0f;
+    static float lastProcessedSampleRight = 0.0f;
+    static float clockAccumulator = 0.0f;
+
     // Dynamically calculate longDelayTimes based on smoothed delay time
     longDelayTimes[0] = smoothedDelayTime;  // First value is the smoothed delay time
     for (int i = 1; i < longDelayTimes.size(); ++i)
@@ -316,35 +325,39 @@ void TriquetraAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juc
         float inputSampleLeft = buffer.getSample(0, sample);
         float inputSampleRight = totalNumInputChannels > 1 ? buffer.getSample(1, sample) : inputSampleLeft;
 
-        // Process delays and feedback without matrix modulation
-        shortDelayProcessor.process(shortDelayTimes, shortFeedbackLeft, shortFeedbackRight, modulationValue, stereoOffset, shortDelayOutputLeft, shortDelayOutputRight, inputSampleLeft, inputSampleRight, feedbackValue);
+        // Clock-based sample processing
+        clockAccumulator += clockRate;
+        if (clockAccumulator >= 1.0f)
+        {
+            clockAccumulator -= 1.0f;
 
-        longDelayProcessor.process(longDelayTimes, longFeedbackLeft, longFeedbackRight, modulationValue, stereoOffset, longDelayOutputLeft, longDelayOutputRight, inputSampleLeft, inputSampleRight, feedbackValue);
+            // Process delays and feedback without matrix modulation
+            shortDelayProcessor.process(shortDelayTimes, shortFeedbackLeft, shortFeedbackRight, modulationValue, stereoOffset, shortDelayOutputLeft, shortDelayOutputRight, inputSampleLeft, inputSampleRight, feedbackValue);
 
-//        reverbProcessor.process(shortDelayOutputLeft, shortDelayOutputRight,
-//                                longDelayOutputLeft, longDelayOutputRight,
-//                                reverbOutputLeft, reverbOutputRight);
+            longDelayProcessor.process(longDelayTimes, longFeedbackLeft, longFeedbackRight, modulationValue, stereoOffset, longDelayOutputLeft, longDelayOutputRight, inputSampleLeft, inputSampleRight, feedbackValue);
 
-        // Combine outputs from the 3 processors for the final mix
-        auto [outputSampleLeft, outputSampleRight, wetSignalLeft, wetSignalRight] = processAndSumSignals(
-            shortDelayOutputLeft, shortDelayOutputRight,
-            longDelayOutputLeft, longDelayOutputRight,
-            reverbOutputLeft, reverbOutputRight,
-            inputSampleLeft, inputSampleRight,
-            1.0 - mixValue, mixValue, outputGain
-        );
+            // Combine outputs from the processors for the final mix
+            auto [outputSampleLeft, outputSampleRight, wetSignalLeft, wetSignalRight] = processAndSumSignals(
+                shortDelayOutputLeft, shortDelayOutputRight,
+                longDelayOutputLeft, longDelayOutputRight,
+                reverbOutputLeft, reverbOutputRight,
+                inputSampleLeft, inputSampleRight,
+                1.0 - mixValue, mixValue, outputGain
+            );
 
-        // Write final output to buffer
-        buffer.setSample(0, sample, outputSampleLeft);
-        buffer.setSample(1, sample, outputSampleRight);
+            lastProcessedSampleLeft = outputSampleLeft;
+            lastProcessedSampleRight = outputSampleRight;
 
-        // Update delay buffer for feedback
-        delayBuffer[writePosition] = (wetSignalLeft + wetSignalRight) * 0.5f * feedbackGain;
-        writePosition = (writePosition + 1) % delayBufferSize;
+            // Update delay buffer for feedback
+            delayBuffer[writePosition] = (wetSignalLeft + wetSignalRight) * 0.5f * feedbackGain;
+            writePosition = (writePosition + 1) % delayBufferSize;
+        }
+
+        // Write the last processed sample to the output buffer
+        buffer.setSample(0, sample, lastProcessedSampleLeft);
+        buffer.setSample(1, sample, lastProcessedSampleRight);
     }
 }
-
-
 
 std::tuple<float, float, float, float> TriquetraAudioProcessor::processAndSumSignals(
     const std::array<float, 8>& shortDelayOutputLeft,
