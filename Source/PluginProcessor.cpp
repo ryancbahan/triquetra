@@ -68,7 +68,7 @@ TriquetraAudioProcessor::TriquetraAudioProcessor()
     delayTimeParameter = parameters.getRawParameterValue("delayTime");
     feedbackParameter = parameters.getRawParameterValue("feedback");
     depthParameter = parameters.getRawParameterValue("depth");
-    qualityParameter = parameters.getRawParameterValue("quality");
+    clockParameter = parameters.getRawParameterValue("clock");
 
 }
 
@@ -110,7 +110,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout TriquetraAudioProcessor::cre
         juce::NormalisableRange<float>(0.0f, 2.0f), 0.5f));
     
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
-        juce::ParameterID("quality", 4), "Quality",
+        juce::ParameterID("clock", 4), "Clock",
         juce::NormalisableRange<float>(0.0f, 1.0f), 1.0f));
     
     return { params.begin(), params.end() };
@@ -288,7 +288,7 @@ void TriquetraAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juc
     float mixValue = mixParameter->load();
     float feedbackValue = feedbackParameter->load();
     float depthValue = depthParameter->load() / smoothedDelayTime;
-    float qualityValue = qualityParameter->load();
+    float clockValue = clockParameter->load();
 
     updateModulation(getSampleRate(), depthValue);
 
@@ -303,7 +303,7 @@ void TriquetraAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juc
 
     // Hardcoded clock parameter (adjust this value to test different clock rates)
     // 1.0 means normal rate, 0.5 means half rate, 0.25 quarter rate, etc.
-    const float clockRate = qualityValue;
+    const float clockRate = clockValue;
 
     // Variables for clock-based sample processing
     static float lastProcessedWetLeft = 0.0f;

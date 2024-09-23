@@ -32,7 +32,7 @@ public:
     std::atomic<float>* delayTimeParameter = nullptr;
     std::atomic<float>* feedbackParameter = nullptr;
     std::atomic<float>* depthParameter = nullptr;
-    std::atomic<float>* qualityParameter = nullptr;
+    std::atomic<float>* clockParameter = nullptr;
 
     juce::SmoothedValue<float> delayTimeSmoothed;
 
