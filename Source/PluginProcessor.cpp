@@ -68,6 +68,8 @@ TriquetraAudioProcessor::TriquetraAudioProcessor()
     delayTimeParameter = parameters.getRawParameterValue("delayTime");
     feedbackParameter = parameters.getRawParameterValue("feedback");
     depthParameter = parameters.getRawParameterValue("depth");
+    qualityParameter = parameters.getRawParameterValue("quality");
+
 }
 
 TriquetraAudioProcessor::~TriquetraAudioProcessor()
@@ -106,6 +108,10 @@ juce::AudioProcessorValueTreeState::ParameterLayout TriquetraAudioProcessor::cre
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
         juce::ParameterID("depth", 4), "Depth",
         juce::NormalisableRange<float>(0.0f, 2.0f), 0.5f));
+    
+    params.push_back(std::make_unique<juce::AudioParameterFloat>(
+        juce::ParameterID("quality", 4), "Quality",
+        juce::NormalisableRange<float>(0.0f, 1.0f), 1.0f));
     
     return { params.begin(), params.end() };
 }
@@ -282,7 +288,8 @@ void TriquetraAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juc
     float mixValue = mixParameter->load();
     float feedbackValue = feedbackParameter->load();
     float depthValue = depthParameter->load() / smoothedDelayTime;
-    
+    float qualityValue = qualityParameter->load();
+
     updateModulation(getSampleRate(), depthValue);
 
     if (totalNumOutputChannels < 2) return;
@@ -296,11 +303,11 @@ void TriquetraAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juc
 
     // Hardcoded clock parameter (adjust this value to test different clock rates)
     // 1.0 means normal rate, 0.5 means half rate, 0.25 quarter rate, etc.
-    const float clockRate = 0.25f;
+    const float clockRate = qualityValue;
 
     // Variables for clock-based sample processing
-    static float lastProcessedSampleLeft = 0.0f;
-    static float lastProcessedSampleRight = 0.0f;
+    static float lastProcessedWetLeft = 0.0f;
+    static float lastProcessedWetRight = 0.0f;
     static float clockAccumulator = 0.0f;
 
     // Dynamically calculate longDelayTimes based on smoothed delay time
@@ -325,7 +332,9 @@ void TriquetraAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juc
         float inputSampleLeft = buffer.getSample(0, sample);
         float inputSampleRight = totalNumInputChannels > 1 ? buffer.getSample(1, sample) : inputSampleLeft;
 
-        // Clock-based sample processing
+        float wetSignalLeft, wetSignalRight;
+
+        // Clock-based wet signal processing
         clockAccumulator += clockRate;
         if (clockAccumulator >= 1.0f)
         {
@@ -336,26 +345,36 @@ void TriquetraAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juc
 
             longDelayProcessor.process(longDelayTimes, longFeedbackLeft, longFeedbackRight, modulationValue, stereoOffset, longDelayOutputLeft, longDelayOutputRight, inputSampleLeft, inputSampleRight, feedbackValue);
 
-            // Combine outputs from the processors for the final mix
-            auto [outputSampleLeft, outputSampleRight, wetSignalLeft, wetSignalRight] = processAndSumSignals(
+            // Combine outputs from the processors for the wet signal
+            std::tie(std::ignore, std::ignore, wetSignalLeft, wetSignalRight) = processAndSumSignals(
                 shortDelayOutputLeft, shortDelayOutputRight,
                 longDelayOutputLeft, longDelayOutputRight,
                 reverbOutputLeft, reverbOutputRight,
                 inputSampleLeft, inputSampleRight,
-                1.0 - mixValue, mixValue, outputGain
+                0.0f, 1.0f, outputGain  // Use 0.0f for dry mix and 1.0f for wet mix
             );
 
-            lastProcessedSampleLeft = outputSampleLeft;
-            lastProcessedSampleRight = outputSampleRight;
+            lastProcessedWetLeft = wetSignalLeft;
+            lastProcessedWetRight = wetSignalRight;
 
             // Update delay buffer for feedback
             delayBuffer[writePosition] = (wetSignalLeft + wetSignalRight) * 0.5f * feedbackGain;
             writePosition = (writePosition + 1) % delayBufferSize;
         }
+        else
+        {
+            // Use the last processed wet samples
+            wetSignalLeft = lastProcessedWetLeft;
+            wetSignalRight = lastProcessedWetRight;
+        }
 
-        // Write the last processed sample to the output buffer
-        buffer.setSample(0, sample, lastProcessedSampleLeft);
-        buffer.setSample(1, sample, lastProcessedSampleRight);
+        // Mix dry and wet signals
+        float outputSampleLeft = (1.0f - mixValue) * inputSampleLeft + mixValue * wetSignalLeft;
+        float outputSampleRight = (1.0f - mixValue) * inputSampleRight + mixValue * wetSignalRight;
+
+        // Write the final mixed sample to the output buffer
+        buffer.setSample(0, sample, outputSampleLeft);
+        buffer.setSample(1, sample, outputSampleRight);
     }
 }
 
