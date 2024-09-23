@@ -84,7 +84,7 @@ void TriquetraAudioProcessor::updateModulation(float sampleRate, float depthValu
         modulationPhase -= 1.0f;
 
     // Calculate the modulation value using depth parameter
-    modulationValue = std::sin(5.0f * juce::MathConstants<float>::pi * modulationPhase) * depthValue;
+    modulationValue = std::sin(2.0f * juce::MathConstants<float>::pi * modulationPhase) * depthValue;
 }
 
 juce::AudioProcessorValueTreeState::ParameterLayout TriquetraAudioProcessor::createParameterLayout()
@@ -281,7 +281,7 @@ void TriquetraAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juc
 
     float mixValue = mixParameter->load();
     float feedbackValue = feedbackParameter->load();
-    float depthValue = depthParameter->load();
+    float depthValue = depthParameter->load() / smoothedDelayTime;
     
     updateModulation(getSampleRate(), depthValue);
 
