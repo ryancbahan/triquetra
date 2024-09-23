@@ -1,8 +1,21 @@
 #include "ShortDelayProcessor.h"
+#include <random>
 
 ShortDelayProcessor::ShortDelayProcessor()
 {
-    // Constructor
+    // Constructor - initialize the modulation phases and offsets
+    std::random_device rd;
+    std::mt19937 gen(rd());
+    
+    // Prime number ratios for phase offsets and frequency variations
+    std::vector<int> primeRatios = {11, 13, 17, 19, 23, 29, 31, 37};  // Larger prime numbers for slower modulation
+
+    for (int i = 0; i < 8; ++i)
+    {
+        modulationPhases[i] = 0.0f;   // Initialize the modulation phase for each line
+        phaseOffsets[i] = static_cast<float>(primeRatios[i]);  // Prime number offsets
+        modulationFrequencies[i] = 0.0f;  // Will be calculated during process based on delay time
+    }
 }
 
 void ShortDelayProcessor::reset()
@@ -53,18 +66,37 @@ void ShortDelayProcessor::process(const std::array<float, 8>& shortDelayTimes,
 {
     currentFeedback = juce::jlimit(0.0f, 1.0f, currentFeedback);  // Ensure feedback is in the valid range
 
+    // Prime number ratios for irregular phase offsets
+    std::vector<int> primeRatios = {11, 13, 17, 19, 23, 29, 31, 37};
+
     for (int i = 0; i < 8; ++i)
     {
+        // Calculate base modulation frequency as a 1/4 note of the current delay time
+        float baseModulationTime = shortDelayTimes[i] * 4.0f;  // 1/4 note modulation time, slower and more subtle
+
+        // Multiply the base modulation frequency by prime ratios to get longer tremolo periods
+        modulationFrequencies[i] = (1.0f / baseModulationTime) * static_cast<float>(primeRatios[i]);
+
+        // Increment the modulation phase for this delay line
+        modulationPhases[i] += modulationFrequencies[i] / static_cast<float>(sampleRate);
+
+        if (modulationPhases[i] >= 1.0f)
+            modulationPhases[i] -= 1.0f;
+
+        // Apply the phase offset and calculate the tremolo factor
+        // Reduce the modulation depth (0.5 to reduce intensity of tremolo)
+        float tremoloFactor = 1.0f + (modulationValue * 0.25f) * std::sin(1.0f * juce::MathConstants<float>::pi * (modulationPhases[i] + phaseOffsets[i]));
+
+        // Modulate the amplitude (tremolo) instead of modulating delay time
+        float modulatedInputLeft = inputSampleLeft * tremoloFactor;
+        float modulatedInputRight = inputSampleRight * tremoloFactor;
+
         float baseDelayLeft = shortDelayTimes[i] * sampleRate;
         float baseDelayRight = baseDelayLeft + stereoOffset;
 
-        // Modulate delay times and clamp them to prevent overflow
-        float modulatedDelayLeft = juce::jlimit(0.0f, static_cast<float>(delayBufferSize - 1), baseDelayLeft * (1.0f + modulationValue));
-        float modulatedDelayRight = juce::jlimit(0.0f, static_cast<float>(delayBufferSize - 1), baseDelayRight * (1.0f + modulationValue));
-
         // Fetch interpolated samples from delay buffer (output will be 100% wet)
-        shortDelayOutputLeft[i] = getInterpolatedSample(delayBufferLeft[i], modulatedDelayLeft) + shortFeedbackLeft[i] * currentFeedback;
-        shortDelayOutputRight[i] = getInterpolatedSample(delayBufferRight[i], modulatedDelayRight) + shortFeedbackRight[i] * currentFeedback;
+        shortDelayOutputLeft[i] = getInterpolatedSample(delayBufferLeft[i], baseDelayLeft) + shortFeedbackLeft[i] * currentFeedback;
+        shortDelayOutputRight[i] = getInterpolatedSample(delayBufferRight[i], baseDelayRight) + shortFeedbackRight[i] * currentFeedback;
 
         // Apply all-pass filtering and update feedback
         shortDelayOutputLeft[i] = allPassFiltersShort[i].processSample(shortDelayOutputLeft[i]);
@@ -74,9 +106,9 @@ void ShortDelayProcessor::process(const std::array<float, 8>& shortDelayTimes,
         shortDelayOutputLeft[i] = diffusionAmount * allPassFiltersShort[i].processSample(shortDelayOutputLeft[i]);
         shortDelayOutputRight[i] = diffusionAmount * allPassFiltersShort[i].processSample(shortDelayOutputRight[i]);
 
-        // Write the input sample to the delay buffer to feed the delay line, but do NOT add it to the output
-        delayBufferLeft[i][writePosition] = inputSampleLeft;
-        delayBufferRight[i][writePosition] = inputSampleRight;
+        // Write the modulated input sample to the delay buffer (using the modulated input sample)
+        delayBufferLeft[i][writePosition] = modulatedInputLeft;
+        delayBufferRight[i][writePosition] = modulatedInputRight;
     }
 
     // Update write position in circular delay buffer
@@ -115,4 +147,3 @@ std::array<float, 8> ShortDelayProcessor::applyHadamardMixing(const std::array<f
     output[7] = input[0] - input[1] - input[2] + input[3] - input[4] + input[5] + input[6] - input[7];
     return output;
 }
-

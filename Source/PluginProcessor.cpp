@@ -84,7 +84,7 @@ void TriquetraAudioProcessor::updateModulation(float sampleRate, float depthValu
         modulationPhase -= 1.0f;
 
     // Calculate the modulation value using depth parameter
-    modulationValue = std::sin(2.0f * juce::MathConstants<float>::pi * modulationPhase) * depthValue;
+    modulationValue = std::sin(2.0f * juce::MathConstants<float>::pi * modulationPhase) * (depthValue / 2);
 }
 
 juce::AudioProcessorValueTreeState::ParameterLayout TriquetraAudioProcessor::createParameterLayout()
@@ -105,7 +105,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout TriquetraAudioProcessor::cre
     
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
         juce::ParameterID("depth", 4), "Depth",
-        juce::NormalisableRange<float>(0.0f, 4.0f), 0.5f));
+        juce::NormalisableRange<float>(0.0f, 2.0f), 0.5f));
     
     return { params.begin(), params.end() };
 }
@@ -281,7 +281,7 @@ void TriquetraAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juc
 
     float mixValue = mixParameter->load();
     float feedbackValue = feedbackParameter->load();
-    float depthValue = depthParameter->load();
+    float depthValue = depthParameter->load() / smoothedDelayTime;
     
     updateModulation(getSampleRate(), depthValue);
 
@@ -317,7 +317,7 @@ void TriquetraAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juc
         float inputSampleRight = totalNumInputChannels > 1 ? buffer.getSample(1, sample) : inputSampleLeft;
 
         // Process delays and feedback without matrix modulation
-        shortDelayProcessor.process(shortDelayTimes, shortFeedbackLeft, shortFeedbackRight, 0.0f, stereoOffset, shortDelayOutputLeft, shortDelayOutputRight, inputSampleLeft, inputSampleRight, feedbackValue);
+        shortDelayProcessor.process(shortDelayTimes, shortFeedbackLeft, shortFeedbackRight, modulationValue, stereoOffset, shortDelayOutputLeft, shortDelayOutputRight, inputSampleLeft, inputSampleRight, feedbackValue);
 
         longDelayProcessor.process(longDelayTimes, longFeedbackLeft, longFeedbackRight, modulationValue, stereoOffset, longDelayOutputLeft, longDelayOutputRight, inputSampleLeft, inputSampleRight, feedbackValue);
 
