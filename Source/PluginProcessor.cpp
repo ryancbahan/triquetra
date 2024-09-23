@@ -241,6 +241,7 @@ void TriquetraAudioProcessor::prepareToPlay(double sampleRate, int samplesPerBlo
     shortFeedbackRight.fill(0.0f);
     longFeedbackLeft.fill(0.0f);
     longFeedbackRight.fill(0.0f);
+
     
     delayTimeSmoothed.reset(sampleRate, 0.005f); // Set the smoothing time to, say, 50ms
 
@@ -257,6 +258,14 @@ void TriquetraAudioProcessor::prepareToPlay(double sampleRate, int samplesPerBlo
 
     // Reset modulation phase and other time-dependent variables
     modulationPhase = 0.0f;
+    juce::dsp::ProcessSpec spec;
+       spec.sampleRate = sampleRate;
+       spec.maximumBlockSize = samplesPerBlock;
+       spec.numChannels = getTotalNumInputChannels();
+    envelopeFollower.prepare(spec);
+    envelopeFollower.setAttackTime(5000.0f);  // 5000ms (5 seconds) attack time for an extremely noticeable effect
+    envelopeFollower.setReleaseTime(100.0f);  // 100ms release time
+    envelopeFollower.reset();
 
     // The Hadamard matrix is typically static, so no need to reset it here unless necessary for feedback.
     // If you still need to reset it, you can uncomment the line below.
@@ -280,103 +289,165 @@ void TriquetraAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juc
     auto totalNumInputChannels = getTotalNumInputChannels();
     auto totalNumOutputChannels = getTotalNumOutputChannels();
 
-    // Get and smooth delayTimeParameter to avoid abrupt changes
-    float targetDelayTimeValue = delayTimeParameter->load();
-    delayTimeSmoothed.setTargetValue(targetDelayTimeValue);  // Set the target value
-    float smoothedDelayTime = delayTimeSmoothed.getNextValue();  // Get the smoothed value
-
-    float mixValue = mixParameter->load();
-    float feedbackValue = feedbackParameter->load();
-    float depthValue = depthParameter->load() / smoothedDelayTime;
-    float clockValue = clockParameter->load();
-
-    updateModulation(getSampleRate(), depthValue);
-
-    if (totalNumOutputChannels < 2) return;
-
-    // Clear unused channels
+    // Clear unused output channels
     for (auto i = totalNumInputChannels; i < totalNumOutputChannels; ++i)
         buffer.clear(i, 0, buffer.getNumSamples());
 
-    float sampleRate = static_cast<float>(getSampleRate());
-    const float stereoOffset = 0.02f * sampleRate;
+    static bool wasLastBlockSilent = true;
+    bool isCurrentBlockSilent = true;
 
-    // Hardcoded clock parameter (adjust this value to test different clock rates)
-    // 1.0 means normal rate, 0.5 means half rate, 0.25 quarter rate, etc.
-    const float clockRate = clockValue;
-
-    // Variables for clock-based sample processing
-    static float lastProcessedWetLeft = 0.0f;
-    static float lastProcessedWetRight = 0.0f;
-    static float clockAccumulator = 0.0f;
-
-    // Dynamically calculate longDelayTimes based on smoothed delay time
-    longDelayTimes[0] = smoothedDelayTime;  // First value is the smoothed delay time
-    for (int i = 1; i < longDelayTimes.size(); ++i)
+    // Process each channel
+    for (int channel = 0; channel < totalNumInputChannels; ++channel)
     {
-        longDelayTimes[i] = longDelayTimes[i - 1] * 1.25f;  // Each subsequent value is 25% more
-    }
-    
-    updateShortDelayTimes(smoothedDelayTime);
+        auto* channelData = buffer.getWritePointer(channel);
 
-    // Ensure that all delay times are within valid bounds
-    for (float& delayTime : longDelayTimes)
-    {
-        delayTime = std::min(delayTime, 4.0f);  // Ensure delay time does not exceed the buffer length (4 seconds)
-    }
-
-    const float feedbackGain = 0.7f;
-
-    for (int sample = 0; sample < buffer.getNumSamples(); ++sample)
-    {
-        float inputSampleLeft = buffer.getSample(0, sample);
-        float inputSampleRight = totalNumInputChannels > 1 ? buffer.getSample(1, sample) : inputSampleLeft;
-
-        float wetSignalLeft, wetSignalRight;
-
-        // Clock-based wet signal processing
-        clockAccumulator += clockRate;
-        if (clockAccumulator >= 1.0f)
+        // Process each sample
+        for (int sample = 0; sample < buffer.getNumSamples(); ++sample)
         {
-            clockAccumulator -= 1.0f;
+            float inputSample = channelData[sample];
 
-            // Process delays and feedback without matrix modulation
-            shortDelayProcessor.process(shortDelayTimes, shortFeedbackLeft, shortFeedbackRight, modulationValue, stereoOffset, shortDelayOutputLeft, shortDelayOutputRight, inputSampleLeft, inputSampleRight, feedbackValue);
+            // Check if the current block is silent
+            if (std::abs(inputSample) > 1e-6f)
+            {
+                isCurrentBlockSilent = false;
+            }
 
-            longDelayProcessor.process(longDelayTimes, longFeedbackLeft, longFeedbackRight, modulationValue, stereoOffset, longDelayOutputLeft, longDelayOutputRight, inputSampleLeft, inputSampleRight, feedbackValue);
+            // If we're coming out of silence, reset the envelope follower
+            if (wasLastBlockSilent && !isCurrentBlockSilent)
+            {
+                envelopeFollower.reset();
+            }
 
-            // Combine outputs from the processors for the wet signal
-            std::tie(std::ignore, std::ignore, wetSignalLeft, wetSignalRight) = processAndSumSignals(
-                shortDelayOutputLeft, shortDelayOutputRight,
-                longDelayOutputLeft, longDelayOutputRight,
-                reverbOutputLeft, reverbOutputRight,
-                inputSampleLeft, inputSampleRight,
-                0.0f, 1.0f, outputGain  // Use 0.0f for dry mix and 1.0f for wet mix
-            );
+            // Get the envelope value (always chasing 1.0)
+            float envelopeValue = envelopeFollower.processSample(channel, 1.0f);
 
-            lastProcessedWetLeft = wetSignalLeft;
-            lastProcessedWetRight = wetSignalRight;
+            // Apply a more extreme envelope curve
+            float extremeEnvelope = std::pow(envelopeValue, 4.0f);
 
-            // Update delay buffer for feedback
-            delayBuffer[writePosition] = (wetSignalLeft + wetSignalRight) * 0.5f * feedbackGain;
-            writePosition = (writePosition + 1) % delayBufferSize;
+            // Apply envelope to the input sample
+            float envelopedSample = inputSample * extremeEnvelope;
+
+            // Output only the enveloped signal
+            channelData[sample] = envelopedSample;
         }
-        else
-        {
-            // Use the last processed wet samples
-            wetSignalLeft = lastProcessedWetLeft;
-            wetSignalRight = lastProcessedWetRight;
-        }
+    }
 
-        // Mix dry and wet signals
-        float outputSampleLeft = (1.0f - mixValue) * inputSampleLeft + mixValue * wetSignalLeft;
-        float outputSampleRight = (1.0f - mixValue) * inputSampleRight + mixValue * wetSignalRight;
+    wasLastBlockSilent = isCurrentBlockSilent;
 
-        // Write the final mixed sample to the output buffer
-        buffer.setSample(0, sample, outputSampleLeft);
-        buffer.setSample(1, sample, outputSampleRight);
+    // Debug output
+    static int blockCounter = 0;
+    if (++blockCounter % 100 == 0)
+    {
+        float debugEnvelopeValue = envelopeFollower.processSample(0, 1.0f);
+        float extremeEnvelope = std::pow(debugEnvelopeValue, 4.0f);
+        DBG("Current envelope value: " << debugEnvelopeValue << ", Extreme envelope: " << extremeEnvelope);
+        DBG("Is block silent: " << (isCurrentBlockSilent ? "Yes" : "No"));
     }
 }
+
+//void TriquetraAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midiMessages)
+//{
+//    juce::ScopedNoDenormals noDenormals;
+//    auto totalNumInputChannels = getTotalNumInputChannels();
+//    auto totalNumOutputChannels = getTotalNumOutputChannels();
+//
+//    // Get and smooth delayTimeParameter to avoid abrupt changes
+//    float targetDelayTimeValue = delayTimeParameter->load();
+//    delayTimeSmoothed.setTargetValue(targetDelayTimeValue);  // Set the target value
+//    float smoothedDelayTime = delayTimeSmoothed.getNextValue();  // Get the smoothed value
+//
+//    float mixValue = mixParameter->load();
+//    float feedbackValue = feedbackParameter->load();
+//    float depthValue = depthParameter->load() / smoothedDelayTime;
+//    float clockValue = clockParameter->load();
+//
+//    updateModulation(getSampleRate(), depthValue);
+//
+//    if (totalNumOutputChannels < 2) return;
+//
+//    // Clear unused channels
+//    for (auto i = totalNumInputChannels; i < totalNumOutputChannels; ++i)
+//        buffer.clear(i, 0, buffer.getNumSamples());
+//
+//    float sampleRate = static_cast<float>(getSampleRate());
+//    const float stereoOffset = 0.02f * sampleRate;
+//
+//    // Hardcoded clock parameter (adjust this value to test different clock rates)
+//    // 1.0 means normal rate, 0.5 means half rate, 0.25 quarter rate, etc.
+//    const float clockRate = clockValue;
+//
+//    // Variables for clock-based sample processing
+//    static float lastProcessedWetLeft = 0.0f;
+//    static float lastProcessedWetRight = 0.0f;
+//    static float clockAccumulator = 0.0f;
+//
+//    // Dynamically calculate longDelayTimes based on smoothed delay time
+//    longDelayTimes[0] = smoothedDelayTime;  // First value is the smoothed delay time
+//    for (int i = 1; i < longDelayTimes.size(); ++i)
+//    {
+//        longDelayTimes[i] = longDelayTimes[i - 1] * 1.25f;  // Each subsequent value is 25% more
+//    }
+//    
+//    updateShortDelayTimes(smoothedDelayTime);
+//
+//    // Ensure that all delay times are within valid bounds
+//    for (float& delayTime : longDelayTimes)
+//    {
+//        delayTime = std::min(delayTime, 4.0f);  // Ensure delay time does not exceed the buffer length (4 seconds)
+//    }
+//
+//    const float feedbackGain = 0.7f;
+//
+//    for (int sample = 0; sample < buffer.getNumSamples(); ++sample)
+//    {
+//        float inputSampleLeft = buffer.getSample(0, sample);
+//        float inputSampleRight = totalNumInputChannels > 1 ? buffer.getSample(1, sample) : inputSampleLeft;
+//
+//        float wetSignalLeft, wetSignalRight;
+//
+//        // Clock-based wet signal processing
+//        clockAccumulator += clockRate;
+//        if (clockAccumulator >= 1.0f)
+//        {
+//            clockAccumulator -= 1.0f;
+//
+//            // Process delays and feedback without matrix modulation
+//            shortDelayProcessor.process(shortDelayTimes, shortFeedbackLeft, shortFeedbackRight, modulationValue, stereoOffset, shortDelayOutputLeft, shortDelayOutputRight, inputSampleLeft, inputSampleRight, feedbackValue);
+//
+//            longDelayProcessor.process(longDelayTimes, longFeedbackLeft, longFeedbackRight, modulationValue, stereoOffset, longDelayOutputLeft, longDelayOutputRight, inputSampleLeft, inputSampleRight, feedbackValue);
+//
+//            // Combine outputs from the processors for the wet signal
+//            std::tie(std::ignore, std::ignore, wetSignalLeft, wetSignalRight) = processAndSumSignals(
+//                shortDelayOutputLeft, shortDelayOutputRight,
+//                longDelayOutputLeft, longDelayOutputRight,
+//                reverbOutputLeft, reverbOutputRight,
+//                inputSampleLeft, inputSampleRight,
+//                0.0f, 1.0f, outputGain  // Use 0.0f for dry mix and 1.0f for wet mix
+//            );
+//
+//            lastProcessedWetLeft = wetSignalLeft;
+//            lastProcessedWetRight = wetSignalRight;
+//
+//            // Update delay buffer for feedback
+//            delayBuffer[writePosition] = (wetSignalLeft + wetSignalRight) * 0.5f * feedbackGain;
+//            writePosition = (writePosition + 1) % delayBufferSize;
+//        }
+//        else
+//        {
+//            // Use the last processed wet samples
+//            wetSignalLeft = lastProcessedWetLeft;
+//            wetSignalRight = lastProcessedWetRight;
+//        }
+//
+//        // Mix dry and wet signals
+//        float outputSampleLeft = (1.0f - mixValue) * inputSampleLeft + mixValue * wetSignalLeft;
+//        float outputSampleRight = (1.0f - mixValue) * inputSampleRight + mixValue * wetSignalRight;
+//
+//        // Write the final mixed sample to the output buffer
+//        buffer.setSample(0, sample, outputSampleLeft);
+//        buffer.setSample(1, sample, outputSampleRight);
+//    }
+//}
 
 std::tuple<float, float, float, float> TriquetraAudioProcessor::processAndSumSignals(
     const std::array<float, 8>& shortDelayOutputLeft,

@@ -70,7 +70,8 @@ private:
     ReverbProcessor reverbProcessor;
     ShortDelayProcessor shortDelayProcessor;
     LongDelayProcessor longDelayProcessor;
-    
+    juce::dsp::BallisticsFilter<float> envelopeFollower;
+
     std::array<float, 8> shortFeedbackLeft;
     std::array<float, 8> shortFeedbackRight;
     std::array<float, 8> longFeedbackLeft;
