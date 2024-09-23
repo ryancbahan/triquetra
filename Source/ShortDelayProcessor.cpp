@@ -6,14 +6,15 @@ ShortDelayProcessor::ShortDelayProcessor()
     // Constructor - initialize the modulation phases and offsets
     std::random_device rd;
     std::mt19937 gen(rd());
-    std::vector<int> primeRatios = {2, 3, 5, 7, 11, 13, 17, 19};  // Prime number ratios
+    
+    // Prime number ratios for phase offsets and frequency variations
+    std::vector<int> primeRatios = {11, 13, 17, 19, 23, 29, 31, 37};  // Larger prime numbers for slower modulation
 
-    // Initialize the unique phase offsets for each delay line
     for (int i = 0; i < 8; ++i)
     {
-        modulationPhases[i] = 0.0f;            // Initial phase for each delay line
-        // Phase offsets are prime number ratios of the base delay modulation
-        phaseOffsets[i] = 1.0f / static_cast<float>(primeRatios[i]);  // Prime number ratios
+        modulationPhases[i] = 0.0f;   // Initialize the modulation phase for each line
+        phaseOffsets[i] = static_cast<float>(primeRatios[i]);  // Prime number offsets
+        modulationFrequencies[i] = 0.0f;  // Will be calculated during process based on delay time
     }
 }
 
@@ -65,19 +66,26 @@ void ShortDelayProcessor::process(const std::array<float, 8>& shortDelayTimes,
 {
     currentFeedback = juce::jlimit(0.0f, 1.0f, currentFeedback);  // Ensure feedback is in the valid range
 
+    // Prime number ratios for irregular phase offsets
+    std::vector<int> primeRatios = {11, 13, 17, 19, 23, 29, 31, 37};
+
     for (int i = 0; i < 8; ++i)
     {
-        // Calculate modulation frequency as a 1/4 note of the current delay time
-        float baseModulationTime = shortDelayTimes[i] * 8.0f;  // 1/4 note modulation time
-        modulationFrequency = 1.0f / baseModulationTime;        // Frequency based on 1/4 note time
+        // Calculate base modulation frequency as a 1/4 note of the current delay time
+        float baseModulationTime = shortDelayTimes[i] * 4.0f;  // 1/4 note modulation time, slower and more subtle
 
-        // Increment the modulation phase for this delay line, respecting the unique phase offset
-        modulationPhases[i] += modulationFrequency / static_cast<float>(sampleRate);
+        // Multiply the base modulation frequency by prime ratios to get longer tremolo periods
+        modulationFrequencies[i] = (1.0f / baseModulationTime) * static_cast<float>(primeRatios[i]);
+
+        // Increment the modulation phase for this delay line
+        modulationPhases[i] += modulationFrequencies[i] / static_cast<float>(sampleRate);
+
         if (modulationPhases[i] >= 1.0f)
             modulationPhases[i] -= 1.0f;
 
-        // Calculate the tremolo factor using a sine wave and the unique phase offset with prime ratios
-        float tremoloFactor = 1.0f + modulationValue * std::sin(2.0f * juce::MathConstants<float>::pi * (modulationPhases[i] + phaseOffsets[i]));
+        // Apply the phase offset and calculate the tremolo factor
+        // Reduce the modulation depth (0.5 to reduce intensity of tremolo)
+        float tremoloFactor = 1.0f + (modulationValue * 0.25f) * std::sin(1.0f * juce::MathConstants<float>::pi * (modulationPhases[i] + phaseOffsets[i]));
 
         // Modulate the amplitude (tremolo) instead of modulating delay time
         float modulatedInputLeft = inputSampleLeft * tremoloFactor;

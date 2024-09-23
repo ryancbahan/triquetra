@@ -84,7 +84,7 @@ void TriquetraAudioProcessor::updateModulation(float sampleRate, float depthValu
         modulationPhase -= 1.0f;
 
     // Calculate the modulation value using depth parameter
-    modulationValue = std::sin(2.0f * juce::MathConstants<float>::pi * modulationPhase) * depthValue;
+    modulationValue = std::sin(2.0f * juce::MathConstants<float>::pi * modulationPhase) * (depthValue / 2);
 }
 
 juce::AudioProcessorValueTreeState::ParameterLayout TriquetraAudioProcessor::createParameterLayout()

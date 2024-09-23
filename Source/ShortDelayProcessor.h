@@ -34,6 +34,7 @@ private:
     std::array<float, 8> phaseOffsets;      // Phase offsets for each delay line
     float modulationDepth;         
 
+    std::array<float, 8> modulationFrequencies;  
     std::array<juce::dsp::IIR::Filter<float>, 8> allPassFiltersShort;
     std::vector<std::vector<float>> delayBufferLeft;
     std::vector<std::vector<float>> delayBufferRight;
