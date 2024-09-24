@@ -114,7 +114,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout TriquetraAudioProcessor::cre
         juce::ParameterID("clock", 4), "Clock",
         juce::NormalisableRange<float>(0.0f, 1.0f), 1.0f));
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
-        juce::ParameterID("smear", 4), "Smear",
+        juce::ParameterID("smear", 5), "Smear",
         juce::NormalisableRange<float>(0.0f, 0.5f), 0.0f));
     
     return { params.begin(), params.end() };

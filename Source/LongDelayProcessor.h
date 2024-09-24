@@ -51,7 +51,7 @@ private:
     std::array<float, 4> irregularDelayFactors;
 
     // All-pass filters for diffusion
-    std::array<juce::dsp::FirstOrderTPTFilter<float>, 4> allPassFiltersLong;
+    std::array<juce::dsp::IIR::Filter<float>, 4> allPassFiltersLong;
 
     // Envelope followers for input samples
     EnvelopeFollower envelopeFollowerLeft;

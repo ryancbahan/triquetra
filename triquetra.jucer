@@ -12,6 +12,10 @@
             file="Source/PluginEditor.cpp"/>
       <FILE id="kcRkdP" name="PluginEditor.h" compile="0" resource="0" file="Source/PluginEditor.h"/>
     </GROUP>
+    <FILE id="W70w6S" name="EnvelopeFollower.cpp" compile="1" resource="0"
+          file="Source/EnvelopeFollower.cpp"/>
+    <FILE id="lxErcn" name="EnvelopeFollower.h" compile="0" resource="0"
+          file="Source/EnvelopeFollower.h"/>
     <FILE id="afQoti" name="LongDelayProcessor.cpp" compile="1" resource="0"
           file="Source/LongDelayProcessor.cpp"/>
     <FILE id="c8YcGF" name="LongDelayProcessor.h" compile="0" resource="0"

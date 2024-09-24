@@ -149,9 +149,9 @@ void LongDelayProcessor::process(const std::array<float, 4>& longDelayTimes,
         float originalDelayRight = juce::jlimit(0.0f, static_cast<float>(delayBufferSize - 1), baseDelayRight * (1.0f + modulatedDelay));
 
         // Get samples for original delays
-        float delayedSampleLeft = getInterpolatedSample(delayBufferLeft[i], originalDelayLeft);
-        float delayedSampleRight = getInterpolatedSample(delayBufferRight[i], originalDelayRight);
-
+        longHadamardLeft[i] = getInterpolatedSample(delayBufferLeft[i], originalDelayLeft);
+       longHadamardRight[i] = getInterpolatedSample(delayBufferRight[i], originalDelayRight);
+        
         // Calculate irregular delay
         float irregularDelayLeft = baseDelayLeft * irregularDelayFactors[i];
         float irregularDelayRight = baseDelayRight * irregularDelayFactors[i];
@@ -178,26 +178,26 @@ void LongDelayProcessor::process(const std::array<float, 4>& longDelayTimes,
 
         // Apply decay to both original and irregular delays
         float decayFactor = std::pow(decayRate, static_cast<float>(i));
-        delayedSampleLeft *= decayFactor;
-        delayedSampleRight *= decayFactor;
+        longHadamardLeft[i] *= decayFactor;
+        longHadamardRight[i] *= decayFactor;
         irregularSampleLeft *= decayFactor;
         irregularSampleRight *= decayFactor;
 
         // Mix irregular delays into Hadamard arrays
-        longHadamardLeft[i] = delayedSampleLeft * bloomFeedbackGain + irregularSampleLeft * bloomFeedbackGain;
-        longHadamardRight[i] = delayedSampleRight * bloomFeedbackGain + irregularSampleRight * bloomFeedbackGain;
+        longHadamardLeft[i + 4] = irregularSampleLeft * bloomFeedbackGain;
+        longHadamardRight[i + 4] = irregularSampleRight * bloomFeedbackGain;
 
         // Apply all-pass filtering for diffusion
-        longHadamardLeft[i] = allPassFiltersLong[i].processSample(0, longHadamardLeft[i]);
-        longHadamardRight[i] = allPassFiltersLong[i].processSample(1, longHadamardRight[i]);
+        longHadamardLeft[i] = allPassFiltersLong[i].processSample(longHadamardLeft[i]);
+        longHadamardRight[i] = allPassFiltersLong[i].processSample(longHadamardRight[i]);
 
         // Apply attenuation
         longHadamardLeft[i] *= attenuationFactor;
         longHadamardRight[i] *= attenuationFactor;
 
         // Calculate feedback using the dynamic feedback parameter
-        longFeedbackLeft[i] = juce::jlimit(-0.95f, 0.95f, longHadamardLeft[i] * currentFeedback);
-        longFeedbackRight[i] = juce::jlimit(-0.95f, 0.95f, longHadamardRight[i] * currentFeedback);
+        longFeedbackLeft[i] = juce::jlimit(-0.95f, 0.95f, (longHadamardLeft[i] + longHadamardLeft[i + 4]) * currentFeedback);
+        longFeedbackRight[i] = juce::jlimit(-0.95f, 0.95f, (longHadamardRight[i] + longHadamardRight[i + 4]) * currentFeedback);
 
         // Update the delay buffer with the attenuated input sample and feedback
         delayBufferLeft[i][writePosition] = attenuatedInputLeft + longFeedbackLeft[i];
