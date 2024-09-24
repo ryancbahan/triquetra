@@ -266,6 +266,9 @@ void TriquetraAudioProcessor::prepareToPlay(double sampleRate, int samplesPerBlo
     envelopeFollower.setAttackTime(5000.0f);  // 5000ms (5 seconds) attack time for an extremely noticeable effect
     envelopeFollower.setReleaseTime(100.0f);  // 100ms release time
     envelopeFollower.reset();
+    
+    envelopeFollower2.prepareToPlay(sampleRate, samplesPerBlock, getTotalNumInputChannels());
+
 
     // The Hadamard matrix is typically static, so no need to reset it here unless necessary for feedback.
     // If you still need to reset it, you can uncomment the line below.
@@ -286,64 +289,79 @@ float TriquetraAudioProcessor::applyGain(float sample, float gainFactor)
 void TriquetraAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midiMessages)
 {
     juce::ScopedNoDenormals noDenormals;
-    auto totalNumInputChannels = getTotalNumInputChannels();
-    auto totalNumOutputChannels = getTotalNumOutputChannels();
 
     // Clear unused output channels
+    auto totalNumInputChannels = getTotalNumInputChannels();
+    auto totalNumOutputChannels = getTotalNumOutputChannels();
     for (auto i = totalNumInputChannels; i < totalNumOutputChannels; ++i)
         buffer.clear(i, 0, buffer.getNumSamples());
 
-    const float noiseGateThreshold = 0.01f; // Adjust this value to set the noise gate threshold
-    const float amplitudeJumpThreshold = 0.05f; // Adjust this value to set the amplitude jump threshold
-    static float previousPeakAmplitude = 0.0f;
-    static bool envelopeReady = true;
-
-    // Process each channel
-    for (int channel = 0; channel < totalNumInputChannels; ++channel)
-    {
-        auto* channelData = buffer.getWritePointer(channel);
-
-        // Find peak amplitude in the current buffer
-        float peakAmplitude = 0.0f;
-        for (int sample = 0; sample < buffer.getNumSamples(); ++sample)
-        {
-            peakAmplitude = std::max(peakAmplitude, std::abs(channelData[sample]));
-        }
-
-        // Check for reset conditions
-        if (peakAmplitude < noiseGateThreshold)
-        {
-            envelopeReady = true;
-        }
-        else if (envelopeReady && peakAmplitude > previousPeakAmplitude + amplitudeJumpThreshold)
-        {
-            envelopeFollower.reset();
-            envelopeReady = false;
-            DBG("Envelope reset triggered");
-        }
-
-        // Process each sample
-        for (int sample = 0; sample < buffer.getNumSamples(); ++sample)
-        {
-            float inputSample = channelData[sample];
-
-            // Get the envelope value (always chasing 1.0)
-            float envelopeValue = envelopeFollower.processSample(channel, 1.0f);
-
-            // Apply a more extreme envelope curve
-            float extremeEnvelope = std::pow(envelopeValue, 4.0f);
-
-            // Apply envelope to the input sample
-            float envelopedSample = inputSample * extremeEnvelope;
-
-            // Mix between dry and wet signal
-            float mix = 0.8f; // 80% wet, 20% dry
-            channelData[sample] = envelopedSample;
-        }
-
-        previousPeakAmplitude = peakAmplitude;
-    }
+    // Process the buffer using the EnvelopeProcessor
+    envelopeFollower2.processBlock(buffer);
 }
+
+
+//void TriquetraAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midiMessages)
+//{
+//    juce::ScopedNoDenormals noDenormals;
+//    auto totalNumInputChannels = getTotalNumInputChannels();
+//    auto totalNumOutputChannels = getTotalNumOutputChannels();
+//
+//    // Clear unused output channels
+//    for (auto i = totalNumInputChannels; i < totalNumOutputChannels; ++i)
+//        buffer.clear(i, 0, buffer.getNumSamples());
+//
+//    const float noiseGateThreshold = 0.01f; // Adjust this value to set the noise gate threshold
+//    const float amplitudeJumpThreshold = 0.05f; // Adjust this value to set the amplitude jump threshold
+//    static float previousPeakAmplitude = 0.0f;
+//    static bool envelopeReady = true;
+//
+//    // Process each channel
+//    for (int channel = 0; channel < totalNumInputChannels; ++channel)
+//    {
+//        auto* channelData = buffer.getWritePointer(channel);
+//
+//        // Find peak amplitude in the current buffer
+//        float peakAmplitude = 0.0f;
+//        for (int sample = 0; sample < buffer.getNumSamples(); ++sample)
+//        {
+//            peakAmplitude = std::max(peakAmplitude, std::abs(channelData[sample]));
+//        }
+//
+//        // Check for reset conditions
+//        if (peakAmplitude < noiseGateThreshold)
+//        {
+//            envelopeReady = true;
+//        }
+//        else if (envelopeReady && peakAmplitude > previousPeakAmplitude + amplitudeJumpThreshold)
+//        {
+//            envelopeFollower.reset();
+//            envelopeReady = false;
+//            DBG("Envelope reset triggered");
+//        }
+//
+//        // Process each sample
+//        for (int sample = 0; sample < buffer.getNumSamples(); ++sample)
+//        {
+//            float inputSample = channelData[sample];
+//
+//            // Get the envelope value (always chasing 1.0)
+//            float envelopeValue = envelopeFollower.processSample(channel, 1.0f);
+//
+//            // Apply a more extreme envelope curve
+//            float extremeEnvelope = std::pow(envelopeValue, 4.0f);
+//
+//            // Apply envelope to the input sample
+//            float envelopedSample = inputSample * extremeEnvelope;
+//
+//            // Mix between dry and wet signal
+//            float mix = 0.8f; // 80% wet, 20% dry
+//            channelData[sample] = envelopedSample;
+//        }
+//
+//        previousPeakAmplitude = peakAmplitude;
+//    }
+//}
 
 //void TriquetraAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midiMessages)
 //{
