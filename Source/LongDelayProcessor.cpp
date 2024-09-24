@@ -14,7 +14,7 @@ LongDelayProcessor::LongDelayProcessor()
     std::random_device rd;
     std::mt19937 gen(rd());
     std::uniform_real_distribution<> dis(0.9, 1.1);
-    
+
     // Initialize irregular delay factors
     for (auto& factor : irregularDelayFactors) {
         factor = static_cast<float>(dis(gen));
@@ -36,9 +36,15 @@ void LongDelayProcessor::reset()
     // Reset the all-pass filters to their initial state
     for (auto& filter : allPassFiltersLong)
         filter.reset();
+
+    // Reset the envelope followers
+    envelopeFollowerLeft.reset();
+    envelopeFollowerRight.reset();
 }
 
-void LongDelayProcessor::prepare(double newSampleRate, int numChannels, float newFeedback, float newBloomFeedbackGain, float newModulationFeedbackAmount, float newAttenuationFactor, float newLongSubdivisionsFactor, float newDecayRate)
+void LongDelayProcessor::prepare(double newSampleRate, int numChannels, float newFeedback, float newBloomFeedbackGain,
+                                 float newModulationFeedbackAmount, float newAttenuationFactor, float newLongSubdivisionsFactor,
+                                 float newDecayRate)
 {
     sampleRate = newSampleRate;
     feedback = newFeedback;
@@ -57,10 +63,32 @@ void LongDelayProcessor::prepare(double newSampleRate, int numChannels, float ne
     }
 
     delayBufferSize = static_cast<int>(sampleRate * 4.0);
-    delayBufferLeft.resize(8, std::vector<float>(delayBufferSize, 0.0f));
-    delayBufferRight.resize(8, std::vector<float>(delayBufferSize, 0.0f));
+
+    // Resize each vector in the arrays individually
+    for (auto& buffer : delayBufferLeft)
+    {
+        buffer.resize(delayBufferSize, 0.0f);
+    }
+
+    for (auto& buffer : delayBufferRight)
+    {
+        buffer.resize(delayBufferSize, 0.0f);
+    }
 
     writePosition = 0;
+
+    // Prepare the envelope followers for input samples
+    envelopeFollowerLeft.prepareToPlay(sampleRate, 1);
+    envelopeFollowerLeft.reset();
+    envelopeFollowerLeft.setAttackTime(0.0f);              // Set desired attack time
+    envelopeFollowerLeft.setAmplitudeJumpThreshold(0.015f); // Adjust as needed
+    envelopeFollowerLeft.setNoiseGateThreshold(0.01f);     // Adjust as needed
+
+    envelopeFollowerRight.prepareToPlay(sampleRate, 1);
+    envelopeFollowerRight.reset();
+    envelopeFollowerRight.setAttackTime(0.0f);              // Set desired attack time
+    envelopeFollowerRight.setAmplitudeJumpThreshold(0.015f); // Adjust as needed
+    envelopeFollowerRight.setNoiseGateThreshold(0.01f);     // Adjust as needed
 }
 
 void LongDelayProcessor::process(const std::array<float, 4>& longDelayTimes,
@@ -70,8 +98,23 @@ void LongDelayProcessor::process(const std::array<float, 4>& longDelayTimes,
                                  std::array<float, 8>& longHadamardLeft,
                                  std::array<float, 8>& longHadamardRight,
                                  float inputSampleLeft, float inputSampleRight,
-                                 float currentFeedback)
+                                 float currentFeedback, float smearValue)
 {
+    
+    if (currentSmearValue != smearValue)
+    {
+        envelopeFollowerLeft.setAttackTime(smearValue);
+        envelopeFollowerRight.setAttackTime(smearValue);
+        currentSmearValue = smearValue;
+    }
+    
+    // Process input samples through envelope followers
+    if (smearValue > 0)
+    {
+        inputSampleLeft = envelopeFollowerLeft.processSample(0, inputSampleLeft);
+        inputSampleRight = envelopeFollowerRight.processSample(0, inputSampleRight);
+    }
+
     const float attenuationFactor = 1.0f / sqrt(4.0f);
 
     float attenuatedInputLeft = inputSampleLeft * attenuationFactor;
@@ -107,8 +150,8 @@ void LongDelayProcessor::process(const std::array<float, 4>& longDelayTimes,
 
         // Get samples for original delays
         longHadamardLeft[i] = getInterpolatedSample(delayBufferLeft[i], originalDelayLeft);
-        longHadamardRight[i] = getInterpolatedSample(delayBufferRight[i], originalDelayRight);
-
+       longHadamardRight[i] = getInterpolatedSample(delayBufferRight[i], originalDelayRight);
+        
         // Calculate irregular delay
         float irregularDelayLeft = baseDelayLeft * irregularDelayFactors[i];
         float irregularDelayRight = baseDelayRight * irregularDelayFactors[i];
@@ -155,7 +198,7 @@ void LongDelayProcessor::process(const std::array<float, 4>& longDelayTimes,
         // Calculate feedback using the dynamic feedback parameter
         longFeedbackLeft[i] = juce::jlimit(-0.95f, 0.95f, (longHadamardLeft[i] + longHadamardLeft[i + 4]) * currentFeedback);
         longFeedbackRight[i] = juce::jlimit(-0.95f, 0.95f, (longHadamardRight[i] + longHadamardRight[i + 4]) * currentFeedback);
-        
+
         // Update the delay buffer with the attenuated input sample and feedback
         delayBufferLeft[i][writePosition] = attenuatedInputLeft + longFeedbackLeft[i];
         delayBufferRight[i][writePosition] = attenuatedInputRight + longFeedbackRight[i];
@@ -177,4 +220,3 @@ float LongDelayProcessor::getInterpolatedSample(const std::vector<float>& buffer
 
     return currentSample + fraction * (nextSample - currentSample);
 }
-

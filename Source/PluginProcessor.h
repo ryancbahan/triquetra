@@ -5,6 +5,7 @@
 #include <array>
 #include <utility>
 #include <JuceHeader.h>
+
 struct AllPassFilter {
     float a = 0.0f;
     float z1 = 0.0f;
@@ -33,6 +34,7 @@ public:
     std::atomic<float>* feedbackParameter = nullptr;
     std::atomic<float>* depthParameter = nullptr;
     std::atomic<float>* clockParameter = nullptr;
+    std::atomic<float>* smearParameter = nullptr;
 
     juce::SmoothedValue<float> delayTimeSmoothed;
 
@@ -71,6 +73,11 @@ private:
     ShortDelayProcessor shortDelayProcessor;
     LongDelayProcessor longDelayProcessor;
     
+    float previousPeakAmplitude = 0.0f;
+    int silentSampleCount = 0;
+    const int silentSampleThreshold = 4410; // About 100ms at 44.1kHz
+    const float noiseGateThreshold = 0.01f;
+    const float amplitudeJumpThreshold = 0.05f;
     std::array<float, 8> shortFeedbackLeft;
     std::array<float, 8> shortFeedbackRight;
     std::array<float, 8> longFeedbackLeft;
