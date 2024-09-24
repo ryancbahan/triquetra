@@ -5,7 +5,6 @@
 #include <array>
 #include <utility>
 #include <JuceHeader.h>
-#include "EnvelopeFollower.h"
 
 struct AllPassFilter {
     float a = 0.0f;
@@ -72,8 +71,6 @@ private:
     ReverbProcessor reverbProcessor;
     ShortDelayProcessor shortDelayProcessor;
     LongDelayProcessor longDelayProcessor;
-    juce::dsp::BallisticsFilter<float> envelopeFollower;
-    EnvelopeFollower envelopeFollower2;
     
     float previousPeakAmplitude = 0.0f;
     int silentSampleCount = 0;

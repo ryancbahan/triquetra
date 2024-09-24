@@ -2,6 +2,7 @@
 
 #include <JuceHeader.h>
 #include <array>
+#include "EnvelopeFollower.h"
 
 class LongDelayProcessor
 {
@@ -21,6 +22,7 @@ public:
 
 
 private:
+    EnvelopeFollower envelopeFollower;
     double sampleRate = 44100.0;
     int delayBufferSize = 0;
     int writePosition = 0;
