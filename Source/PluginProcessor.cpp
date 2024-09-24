@@ -398,11 +398,11 @@ std::tuple<float, float, float, float> TriquetraAudioProcessor::processAndSumSig
     float outputGain)
 {
     // Combine short, long delay, and reverb output for wet signal
-    float wetSignalLeft = /*std::accumulate(shortDelayOutputLeft.begin(), shortDelayOutputLeft.end(), 0.0f) * 0.25f*/
+    float wetSignalLeft = std::accumulate(shortDelayOutputLeft.begin(), shortDelayOutputLeft.end(), 0.0f) * 0.25f +
     std::accumulate(longDelayOutputLeft.begin(), longDelayOutputLeft.end(), 0.0f) * 0.25f;
 //                        + std::accumulate(reverbOutputLeft.begin(), reverbOutputLeft.end(), 0.0f) * 0.25f;
 
-    float wetSignalRight = /*std::accumulate(shortDelayOutputRight.begin(), shortDelayOutputRight.end(), 0.0f) * 0.25f*/
+    float wetSignalRight = std::accumulate(shortDelayOutputRight.begin(), shortDelayOutputRight.end(), 0.0f) * 0.25f +
     std::accumulate(longDelayOutputRight.begin(), longDelayOutputRight.end(), 0.0f) * 0.25f;
 //                        + std::accumulate(reverbOutputRight.begin(), reverbOutputRight.end(), 0.0f) * 0.25f;
 

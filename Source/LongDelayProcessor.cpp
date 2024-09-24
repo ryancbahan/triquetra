@@ -81,14 +81,14 @@ void LongDelayProcessor::prepare(double newSampleRate, int numChannels, float ne
     envelopeFollowerLeft.prepareToPlay(sampleRate, 1);
     envelopeFollowerLeft.reset();
     envelopeFollowerLeft.setAttackTime(0.025f);              // Set desired attack time
-    envelopeFollowerLeft.setAmplitudeJumpThreshold(0.009f); // Adjust as needed
-    envelopeFollowerLeft.setNoiseGateThreshold(0.005f);     // Adjust as needed
+    envelopeFollowerLeft.setAmplitudeJumpThreshold(0.015f); // Adjust as needed
+    envelopeFollowerLeft.setNoiseGateThreshold(0.01f);     // Adjust as needed
 
     envelopeFollowerRight.prepareToPlay(sampleRate, 1);
     envelopeFollowerRight.reset();
     envelopeFollowerRight.setAttackTime(0.025f);              // Set desired attack time
-    envelopeFollowerRight.setAmplitudeJumpThreshold(0.009f); // Adjust as needed
-    envelopeFollowerRight.setNoiseGateThreshold(0.005f);     // Adjust as needed
+    envelopeFollowerRight.setAmplitudeJumpThreshold(0.015f); // Adjust as needed
+    envelopeFollowerRight.setNoiseGateThreshold(0.01f);     // Adjust as needed
 }
 
 void LongDelayProcessor::process(const std::array<float, 4>& longDelayTimes,
