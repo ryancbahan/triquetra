@@ -5,6 +5,8 @@
 #include <array>
 #include <utility>
 #include <JuceHeader.h>
+#include "EnvelopeFollower.h"
+
 struct AllPassFilter {
     float a = 0.0f;
     float z1 = 0.0f;
@@ -71,6 +73,8 @@ private:
     ShortDelayProcessor shortDelayProcessor;
     LongDelayProcessor longDelayProcessor;
     juce::dsp::BallisticsFilter<float> envelopeFollower;
+    EnvelopeFollower envelopeFollower2;
+    
     float previousPeakAmplitude = 0.0f;
     int silentSampleCount = 0;
     const int silentSampleThreshold = 4410; // About 100ms at 44.1kHz
