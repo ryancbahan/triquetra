@@ -109,8 +109,11 @@ void LongDelayProcessor::process(const std::array<float, 4>& longDelayTimes,
     }
     
     // Process input samples through envelope followers
-    inputSampleLeft = envelopeFollowerLeft.processSample(0, inputSampleLeft);
-    inputSampleRight = envelopeFollowerRight.processSample(0, inputSampleRight);
+    if (smearValue > 0)
+    {
+        inputSampleLeft = envelopeFollowerLeft.processSample(0, inputSampleLeft);
+        inputSampleRight = envelopeFollowerRight.processSample(0, inputSampleRight);
+    }
 
     const float attenuationFactor = 1.0f / sqrt(4.0f);
 
