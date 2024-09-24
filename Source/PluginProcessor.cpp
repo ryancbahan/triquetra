@@ -69,6 +69,7 @@ TriquetraAudioProcessor::TriquetraAudioProcessor()
     feedbackParameter = parameters.getRawParameterValue("feedback");
     depthParameter = parameters.getRawParameterValue("depth");
     clockParameter = parameters.getRawParameterValue("clock");
+    smearParameter = parameters.getRawParameterValue("smear");
 
 }
 
@@ -112,6 +113,9 @@ juce::AudioProcessorValueTreeState::ParameterLayout TriquetraAudioProcessor::cre
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
         juce::ParameterID("clock", 4), "Clock",
         juce::NormalisableRange<float>(0.0f, 1.0f), 1.0f));
+    params.push_back(std::make_unique<juce::AudioParameterFloat>(
+        juce::ParameterID("smear", 4), "Smear",
+        juce::NormalisableRange<float>(0.0f, 5.0f), 0.0f));
     
     return { params.begin(), params.end() };
 }
@@ -290,6 +294,7 @@ void TriquetraAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juc
     float feedbackValue = feedbackParameter->load();
     float depthValue = depthParameter->load() / smoothedDelayTime;
     float clockValue = clockParameter->load();
+    float smearValue = smearParameter->load();
 
     updateModulation(getSampleRate(), depthValue);
 
@@ -393,12 +398,12 @@ std::tuple<float, float, float, float> TriquetraAudioProcessor::processAndSumSig
     float outputGain)
 {
     // Combine short, long delay, and reverb output for wet signal
-    float wetSignalLeft = std::accumulate(shortDelayOutputLeft.begin(), shortDelayOutputLeft.end(), 0.0f) * 0.25f
-    + std::accumulate(longDelayOutputLeft.begin(), longDelayOutputLeft.end(), 0.0f) * 0.25f;
+    float wetSignalLeft = /*std::accumulate(shortDelayOutputLeft.begin(), shortDelayOutputLeft.end(), 0.0f) * 0.25f*/
+    std::accumulate(longDelayOutputLeft.begin(), longDelayOutputLeft.end(), 0.0f) * 0.25f;
 //                        + std::accumulate(reverbOutputLeft.begin(), reverbOutputLeft.end(), 0.0f) * 0.25f;
 
-    float wetSignalRight = std::accumulate(shortDelayOutputRight.begin(), shortDelayOutputRight.end(), 0.0f) * 0.25f
-    + std::accumulate(longDelayOutputRight.begin(), longDelayOutputRight.end(), 0.0f) * 0.25f;
+    float wetSignalRight = /*std::accumulate(shortDelayOutputRight.begin(), shortDelayOutputRight.end(), 0.0f) * 0.25f*/
+    std::accumulate(longDelayOutputRight.begin(), longDelayOutputRight.end(), 0.0f) * 0.25f;
 //                        + std::accumulate(reverbOutputRight.begin(), reverbOutputRight.end(), 0.0f) * 0.25f;
 
     // Combine wet and dry signals, apply final output mix

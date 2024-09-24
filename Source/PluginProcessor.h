@@ -34,6 +34,7 @@ public:
     std::atomic<float>* feedbackParameter = nullptr;
     std::atomic<float>* depthParameter = nullptr;
     std::atomic<float>* clockParameter = nullptr;
+    std::atomic<float>* smearParameter = nullptr;
 
     juce::SmoothedValue<float> delayTimeSmoothed;
 
