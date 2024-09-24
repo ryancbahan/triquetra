@@ -75,7 +75,7 @@ private:
     int silentSampleCount = 0;
     const int silentSampleThreshold = 4410; // About 100ms at 44.1kHz
     const float noiseGateThreshold = 0.01f;
-    const float amplitudeJumpThreshold = 0.1f;
+    const float amplitudeJumpThreshold = 0.05f;
     std::array<float, 8> shortFeedbackLeft;
     std::array<float, 8> shortFeedbackRight;
     std::array<float, 8> longFeedbackLeft;

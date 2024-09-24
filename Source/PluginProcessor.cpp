@@ -294,10 +294,9 @@ void TriquetraAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juc
         buffer.clear(i, 0, buffer.getNumSamples());
 
     const float noiseGateThreshold = 0.01f; // Adjust this value to set the noise gate threshold
-    const float amplitudeJumpThreshold = 0.1f; // Adjust this value to set the amplitude jump threshold
+    const float amplitudeJumpThreshold = 0.05f; // Adjust this value to set the amplitude jump threshold
     static float previousPeakAmplitude = 0.0f;
-    static int silentSampleCount = 0;
-    const int silentSampleThreshold = 4410; // About 100ms at 44.1kHz, adjust as needed
+    static bool envelopeReady = true;
 
     // Process each channel
     for (int channel = 0; channel < totalNumInputChannels; ++channel)
@@ -312,28 +311,14 @@ void TriquetraAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juc
         }
 
         // Check for reset conditions
-        bool shouldReset = false;
         if (peakAmplitude < noiseGateThreshold)
         {
-            silentSampleCount += buffer.getNumSamples();
-            if (silentSampleCount >= silentSampleThreshold)
-            {
-                shouldReset = true;
-            }
+            envelopeReady = true;
         }
-        else
-        {
-            silentSampleCount = 0;
-            if (peakAmplitude > previousPeakAmplitude + amplitudeJumpThreshold)
-            {
-                shouldReset = true;
-            }
-        }
-
-        // Reset envelope if conditions are met
-        if (shouldReset)
+        else if (envelopeReady && peakAmplitude > previousPeakAmplitude + amplitudeJumpThreshold)
         {
             envelopeFollower.reset();
+            envelopeReady = false;
             DBG("Envelope reset triggered");
         }
 
@@ -357,16 +342,6 @@ void TriquetraAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juc
         }
 
         previousPeakAmplitude = peakAmplitude;
-    }
-
-    // Debug output
-    static int blockCounter = 0;
-    if (++blockCounter % 100 == 0)
-    {
-        float debugEnvelopeValue = envelopeFollower.processSample(0, 1.0f);
-        float extremeEnvelope = std::pow(debugEnvelopeValue, 4.0f);
-        DBG("Current envelope value: " << debugEnvelopeValue << ", Extreme envelope: " << extremeEnvelope);
-        DBG("Peak amplitude: " << previousPeakAmplitude << ", Silent sample count: " << silentSampleCount);
     }
 }
 
