@@ -267,7 +267,16 @@ void TriquetraAudioProcessor::prepareToPlay(double sampleRate, int samplesPerBlo
     envelopeFollower.setReleaseTime(100.0f);  // 100ms release time
     envelopeFollower.reset();
     
-    envelopeFollower2.prepareToPlay(sampleRate, samplesPerBlock, getTotalNumInputChannels());
+    int numChannels = getTotalNumInputChannels();
+    envelopeFollower2.prepareToPlay(sampleRate, numChannels);
+
+    // Set envelope parameters
+    envelopeFollower2.setAttackTime(0.5f);              // 0.5 seconds attack time
+    envelopeFollower2.setAmplitudeJumpThreshold(0.01f); // Lower threshold for amplitude jumps
+    envelopeFollower2.setNoiseGateThreshold(0.005f);    // Lower noise gate threshold
+
+    // Reset the envelope follower
+    envelopeFollower2.reset();
 
 
     // The Hadamard matrix is typically static, so no need to reset it here unless necessary for feedback.
@@ -296,9 +305,28 @@ void TriquetraAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juc
     for (auto i = totalNumInputChannels; i < totalNumOutputChannels; ++i)
         buffer.clear(i, 0, buffer.getNumSamples());
 
-    // Process the buffer using the EnvelopeProcessor
-    envelopeFollower2.processBlock(buffer);
+    int numSamples = buffer.getNumSamples();
+    float mix = 0.8f; // 80% wet, 20% dry
+
+    // Process each channel
+    for (int channel = 0; channel < totalNumInputChannels; ++channel)
+    {
+        auto* channelData = buffer.getWritePointer(channel);
+
+        for (int sample = 0; sample < numSamples; ++sample)
+        {
+            float inputSample = channelData[sample];
+
+            // Process the sample through the envelope follower
+            float processedSample = envelopeFollower2.processSample(channel, inputSample);
+
+            // Mix between dry and wet signal (external mixing)
+            channelData[sample] = processedSample;
+        }
+    }
 }
+
+
 
 
 //void TriquetraAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midiMessages)

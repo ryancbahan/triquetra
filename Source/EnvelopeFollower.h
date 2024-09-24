@@ -1,28 +1,33 @@
 #ifndef ENVELOPEFOLLOWER_H_INCLUDED
 #define ENVELOPEFOLLOWER_H_INCLUDED
 
-#include <JuceHeader.h>
 #include <vector>
 
 class EnvelopeFollower
 {
 public:
     EnvelopeFollower();
-    void prepareToPlay(double sampleRate, int samplesPerBlock, int numChannels);
-    void processBlock(juce::AudioBuffer<float>& buffer);
+    void prepareToPlay(double sampleRate, int numChannels);
     void reset();
 
-private:
-    // Hardcoded parameters
-    static constexpr float noiseGateThreshold = 0.01f;
-    static constexpr float amplitudeJumpThreshold = 0.05f;
-    static constexpr float attackTime = 2.0f;   // Attack time in seconds
-    static constexpr float mix = 0.8f;          // 80% wet, 20% dry
+    // Processes a single sample and returns the fully wet signal
+    float processSample(int channel, float inputSample);
 
+    // Setters for adjustable parameters
+    void setAttackTime(float time);
+    void setAmplitudeJumpThreshold(float threshold);
+    void setNoiseGateThreshold(float threshold);
+
+private:
+    // Parameters
+    float noiseGateThreshold = 0.01f;
+    float amplitudeJumpThreshold = 0.05f;
+    float attackTime = 2.0f;   // Attack time in seconds
     double sampleRate;
     int numChannels;
 
-    std::vector<float> previousPeakAmplitudes;
+    // State variables per channel
+    std::vector<float> previousAbsSamples;
     std::vector<bool> envelopeReadies;
     std::vector<float> envelopeValues;
     std::vector<bool> envelopeActives;
