@@ -80,13 +80,13 @@ void LongDelayProcessor::prepare(double newSampleRate, int numChannels, float ne
     // Prepare the envelope followers for input samples
     envelopeFollowerLeft.prepareToPlay(sampleRate, 1);
     envelopeFollowerLeft.reset();
-    envelopeFollowerLeft.setAttackTime(0.025f);              // Set desired attack time
+    envelopeFollowerLeft.setAttackTime(0.0f);              // Set desired attack time
     envelopeFollowerLeft.setAmplitudeJumpThreshold(0.015f); // Adjust as needed
     envelopeFollowerLeft.setNoiseGateThreshold(0.01f);     // Adjust as needed
 
     envelopeFollowerRight.prepareToPlay(sampleRate, 1);
     envelopeFollowerRight.reset();
-    envelopeFollowerRight.setAttackTime(0.025f);              // Set desired attack time
+    envelopeFollowerRight.setAttackTime(0.0f);              // Set desired attack time
     envelopeFollowerRight.setAmplitudeJumpThreshold(0.015f); // Adjust as needed
     envelopeFollowerRight.setNoiseGateThreshold(0.01f);     // Adjust as needed
 }
@@ -98,8 +98,16 @@ void LongDelayProcessor::process(const std::array<float, 4>& longDelayTimes,
                                  std::array<float, 8>& longHadamardLeft,
                                  std::array<float, 8>& longHadamardRight,
                                  float inputSampleLeft, float inputSampleRight,
-                                 float currentFeedback)
+                                 float currentFeedback, float smearValue)
 {
+    
+    if (currentSmearValue != smearValue)
+    {
+        envelopeFollowerLeft.setAttackTime(smearValue);
+        envelopeFollowerRight.setAttackTime(smearValue);
+        currentSmearValue = smearValue;
+    }
+    
     // Process input samples through envelope followers
     inputSampleLeft = envelopeFollowerLeft.processSample(0, inputSampleLeft);
     inputSampleRight = envelopeFollowerRight.processSample(0, inputSampleRight);

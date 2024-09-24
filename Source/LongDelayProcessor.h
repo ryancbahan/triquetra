@@ -21,11 +21,12 @@ public:
                  std::array<float, 8>& longHadamardLeft,
                  std::array<float, 8>& longHadamardRight,
                  float inputSampleLeft, float inputSampleRight,
-                 float currentFeedback);
+                 float currentFeedback, float smearValue);
 
 private:
     // Sample rate
     double sampleRate = 44100.0;
+    float currentSmearValue = 0.0f; 
 
     // Delay buffers
     int delayBufferSize = 0;

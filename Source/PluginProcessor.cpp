@@ -115,7 +115,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout TriquetraAudioProcessor::cre
         juce::NormalisableRange<float>(0.0f, 1.0f), 1.0f));
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
         juce::ParameterID("smear", 4), "Smear",
-        juce::NormalisableRange<float>(0.0f, 5.0f), 0.0f));
+        juce::NormalisableRange<float>(0.0f, 0.75f), 0.0f));
     
     return { params.begin(), params.end() };
 }
@@ -349,7 +349,7 @@ void TriquetraAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juc
             // Process delays and feedback without matrix modulation
             shortDelayProcessor.process(shortDelayTimes, shortFeedbackLeft, shortFeedbackRight, modulationValue, stereoOffset, shortDelayOutputLeft, shortDelayOutputRight, inputSampleLeft, inputSampleRight, feedbackValue);
 
-            longDelayProcessor.process(longDelayTimes, longFeedbackLeft, longFeedbackRight, modulationValue, stereoOffset, longDelayOutputLeft, longDelayOutputRight, inputSampleLeft, inputSampleRight, feedbackValue);
+            longDelayProcessor.process(longDelayTimes, longFeedbackLeft, longFeedbackRight, modulationValue, stereoOffset, longDelayOutputLeft, longDelayOutputRight, inputSampleLeft, inputSampleRight, feedbackValue, smearValue);
 
             // Combine outputs from the processors for the wet signal
             std::tie(std::ignore, std::ignore, wetSignalLeft, wetSignalRight) = processAndSumSignals(
