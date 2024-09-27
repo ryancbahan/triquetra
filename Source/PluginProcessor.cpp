@@ -70,6 +70,7 @@ TriquetraAudioProcessor::TriquetraAudioProcessor()
     depthParameter = parameters.getRawParameterValue("depth");
     clockParameter = parameters.getRawParameterValue("clock");
     smearParameter = parameters.getRawParameterValue("smear");
+    dampParameter = parameters.getRawParameterValue("damp");
 
 }
 
@@ -116,6 +117,9 @@ juce::AudioProcessorValueTreeState::ParameterLayout TriquetraAudioProcessor::cre
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
         juce::ParameterID("smear", 5), "Smear",
         juce::NormalisableRange<float>(0.0f, 0.5f), 0.0f));
+    params.push_back(std::make_unique<juce::AudioParameterFloat>(
+        juce::ParameterID("damp", 6), "Damp",
+        juce::NormalisableRange<float>(0.0f, 1.0f), 0.5f));
     
     return { params.begin(), params.end() };
 }
