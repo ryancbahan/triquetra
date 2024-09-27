@@ -9,7 +9,10 @@ ShortDelayProcessor::ShortDelayProcessor()
     
     // Prime number ratios for phase offsets and frequency variations
     std::vector<int> primeRatios = {11, 13, 17, 19, 23, 29, 31, 37};  // Larger prime numbers for slower modulation
-
+    currentCutoffFreq = 15000.0f;
+    lowPassFilterLeft.setType(juce::dsp::StateVariableTPTFilterType::lowpass);
+    lowPassFilterRight.setType(juce::dsp::StateVariableTPTFilterType::lowpass);
+    
     for (int i = 0; i < 8; ++i)
     {
         modulationPhases[i] = 0.0f;   // Initialize the modulation phase for each line
@@ -51,6 +54,9 @@ void ShortDelayProcessor::prepare(double newSampleRate, int numChannels, float n
     delayBufferSize = static_cast<int>(sampleRate * 4.0); // 4 seconds of delay buffer
     delayBufferLeft.resize(8, std::vector<float>(delayBufferSize, 0.0f));
     delayBufferRight.resize(8, std::vector<float>(delayBufferSize, 0.0f));
+    
+    lowPassFilterLeft.prepare(spec);
+    lowPassFilterRight.prepare(spec);
 
     writePosition = 0; // Initialize write position for circular buffer
 }
@@ -62,12 +68,16 @@ void ShortDelayProcessor::process(const std::array<float, 8>& shortDelayTimes,
                                   std::array<float, 8>& shortDelayOutputLeft,
                                   std::array<float, 8>& shortDelayOutputRight,
                                   float inputSampleLeft, float inputSampleRight,
-                                  float currentFeedback)
+                                  float currentFeedback, float dampValue)
 {
     currentFeedback = juce::jlimit(0.0f, 1.0f, currentFeedback);  // Ensure feedback is in the valid range
 
     // Prime number ratios for irregular phase offsets
     std::vector<int> primeRatios = {11, 13, 17, 19, 23, 29, 31, 37};
+    
+    float maxCutoffFreq = 15000.0f;  // Maximum cutoff frequency (minimal damping)
+    float minCutoffFreq = 250.0f;    // Minimum cutoff frequency (maximum damping)
+    float targetCutoffFreq = juce::jmap(dampValue, 0.0f, 1.0f, maxCutoffFreq, minCutoffFreq);
 
     for (int i = 0; i < 8; ++i)
     {
@@ -90,6 +100,13 @@ void ShortDelayProcessor::process(const std::array<float, 8>& shortDelayTimes,
         // Modulate the amplitude (tremolo) instead of modulating delay time
         float modulatedInputLeft = inputSampleLeft * tremoloFactor;
         float modulatedInputRight = inputSampleRight * tremoloFactor;
+        
+        currentCutoffFreq = currentCutoffFreq + (targetCutoffFreq - currentCutoffFreq) * 0.001f;
+        lowPassFilterLeft.setCutoffFrequency(currentCutoffFreq);
+        lowPassFilterRight.setCutoffFrequency(currentCutoffFreq);
+        
+        modulatedInputLeft = lowPassFilterLeft.processSample(0, modulatedInputLeft);
+        modulatedInputRight = lowPassFilterRight.processSample(1, modulatedInputRight);
 
         float baseDelayLeft = shortDelayTimes[i] * sampleRate;
         float baseDelayRight = baseDelayLeft + stereoOffset;
