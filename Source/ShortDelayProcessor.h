@@ -17,7 +17,8 @@ public:
                  std::array<float, 8>& shortDelayOutputLeft,
                  std::array<float, 8>& shortDelayOutputRight,
                  float inputSampleLeft, float inputSampleRight,
-                 float currentFeedback);
+                 float currentFeedback, float dampValue);
+    
     float getInterpolatedSample(const std::vector<float>& buffer, float delayInSamples);
     void updateDelayBuffer(float inputLeft, float inputRight);
     std::array<float, 8> applyHadamardMixing(const std::array<float, 8>& input);
@@ -38,6 +39,11 @@ private:
     std::array<juce::dsp::IIR::Filter<float>, 8> allPassFiltersShort;
     std::vector<std::vector<float>> delayBufferLeft;
     std::vector<std::vector<float>> delayBufferRight;
+    
+    juce::dsp::StateVariableTPTFilter<float> lowPassFilterLeft;
+    juce::dsp::StateVariableTPTFilter<float> lowPassFilterRight;
+
+    float currentCutoffFreq;
 
     // Tremolo-related variables
     float modulationFrequency;  // Controls the rate of the tremolo effect

@@ -70,6 +70,7 @@ TriquetraAudioProcessor::TriquetraAudioProcessor()
     depthParameter = parameters.getRawParameterValue("depth");
     clockParameter = parameters.getRawParameterValue("clock");
     smearParameter = parameters.getRawParameterValue("smear");
+    dampParameter = parameters.getRawParameterValue("damp");
 
 }
 
@@ -116,6 +117,9 @@ juce::AudioProcessorValueTreeState::ParameterLayout TriquetraAudioProcessor::cre
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
         juce::ParameterID("smear", 5), "Smear",
         juce::NormalisableRange<float>(0.0f, 0.5f), 0.0f));
+    params.push_back(std::make_unique<juce::AudioParameterFloat>(
+        juce::ParameterID("damp", 6), "Damp",
+        juce::NormalisableRange<float>(0.0f, 1.0f), 0.5f));
     
     return { params.begin(), params.end() };
 }
@@ -295,6 +299,7 @@ void TriquetraAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juc
     float depthValue = depthParameter->load() / smoothedDelayTime;
     float clockValue = clockParameter->load();
     float smearValue = smearParameter->load();
+    float dampValue = dampParameter->load();
 
     updateModulation(getSampleRate(), depthValue);
 
@@ -347,9 +352,9 @@ void TriquetraAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juc
             clockAccumulator -= 1.0f;
 
             // Process delays and feedback without matrix modulation
-            shortDelayProcessor.process(shortDelayTimes, shortFeedbackLeft, shortFeedbackRight, modulationValue, stereoOffset, shortDelayOutputLeft, shortDelayOutputRight, inputSampleLeft, inputSampleRight, feedbackValue);
+            shortDelayProcessor.process(shortDelayTimes, shortFeedbackLeft, shortFeedbackRight, modulationValue, stereoOffset, shortDelayOutputLeft, shortDelayOutputRight, inputSampleLeft, inputSampleRight, feedbackValue, dampValue);
 
-            longDelayProcessor.process(longDelayTimes, longFeedbackLeft, longFeedbackRight, modulationValue, stereoOffset, longDelayOutputLeft, longDelayOutputRight, inputSampleLeft, inputSampleRight, feedbackValue, smearValue);
+            longDelayProcessor.process(longDelayTimes, longFeedbackLeft, longFeedbackRight, modulationValue, stereoOffset, longDelayOutputLeft, longDelayOutputRight, inputSampleLeft, inputSampleRight, feedbackValue, smearValue, dampValue);
 
             // Combine outputs from the processors for the wet signal
             std::tie(std::ignore, std::ignore, wetSignalLeft, wetSignalRight) = processAndSumSignals(

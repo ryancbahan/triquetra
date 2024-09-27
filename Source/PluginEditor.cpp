@@ -23,6 +23,7 @@ TriquetraAudioProcessorEditor::TriquetraAudioProcessorEditor (TriquetraAudioProc
     setupKnob(depthParamSlider, static_cast<juce::AudioParameterFloat*>(params.getUnchecked(3)), 300, 12, 100, 100, "Depth");
     setupKnob(clockParamSlider, static_cast<juce::AudioParameterFloat*>(params.getUnchecked(4)), 200, 150, 100, 100, "Clock");
     setupKnob(smearParamSlider, static_cast<juce::AudioParameterFloat*>(params.getUnchecked(5)), 100, 150, 100, 100, "Smear");
+    setupKnob(dampParamSlider, static_cast<juce::AudioParameterFloat*>(params.getUnchecked(6)), 0, 150, 100, 100, "Damp");
 
 
 }
