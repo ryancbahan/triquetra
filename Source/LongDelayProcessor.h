@@ -58,9 +58,11 @@ private:
     EnvelopeFollower envelopeFollowerLeft;
     EnvelopeFollower envelopeFollowerRight;
     
-    std::array<juce::dsp::StateVariableTPTFilter<float>, 4> lowPassFiltersLeft;
-    std::array<juce::dsp::StateVariableTPTFilter<float>, 4> lowPassFiltersRight;
+    juce::dsp::StateVariableTPTFilter<float> lowPassFilterLeft;
+    juce::dsp::StateVariableTPTFilter<float> lowPassFilterRight;
 
+    float currentCutoffFreq;
+    
     // Helper functions
     float getInterpolatedSample(const std::vector<float>& buffer, float delayInSamples);
 };

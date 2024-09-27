@@ -14,6 +14,10 @@ LongDelayProcessor::LongDelayProcessor()
     std::random_device rd;
     std::mt19937 gen(rd());
     std::uniform_real_distribution<> dis(0.9, 1.1);
+    
+    lowPassFilterLeft.setType(juce::dsp::StateVariableTPTFilterType::lowpass);
+    lowPassFilterRight.setType(juce::dsp::StateVariableTPTFilterType::lowpass);
+    currentCutoffFreq = 15000.0f;
 
     // Initialize irregular delay factors
     for (auto& factor : irregularDelayFactors) {
@@ -75,19 +79,8 @@ void LongDelayProcessor::prepare(double newSampleRate, int numChannels, float ne
         buffer.resize(delayBufferSize, 0.0f);
     }
     
-    for (auto& filter : lowPassFiltersLeft)
-    {
-        filter.reset();
-        filter.prepare(spec);
-        filter.setType(juce::dsp::StateVariableTPTFilterType::lowpass);  // Set filter type
-    }
-
-    for (auto& filter : lowPassFiltersRight)
-    {
-        filter.reset();
-        filter.prepare(spec);
-        filter.setType(juce::dsp::StateVariableTPTFilterType::lowpass);  // Set filter type
-    }
+    lowPassFilterLeft.prepare(spec);
+    lowPassFilterRight.prepare(spec);
 
     writePosition = 0;
 
@@ -133,7 +126,19 @@ void LongDelayProcessor::process(const std::array<float, 4>& longDelayTimes,
 
     float attenuatedInputLeft = inputSampleLeft * attenuationFactor;
     float attenuatedInputRight = inputSampleRight * attenuationFactor;
+    
+    float maxCutoffFreq = 15000.0f;  // Maximum cutoff frequency (minimal damping)
+    float minCutoffFreq = 250.0f;    // Minimum cutoff frequency (maximum damping)
+    float targetCutoffFreq = juce::jmap(dampValue, 0.0f, 1.0f, maxCutoffFreq, minCutoffFreq);
 
+    // Smoothly adjust the current cutoff frequency towards the target
+    currentCutoffFreq = currentCutoffFreq + (targetCutoffFreq - currentCutoffFreq) * 0.001f;
+    lowPassFilterLeft.setCutoffFrequency(currentCutoffFreq);
+    lowPassFilterRight.setCutoffFrequency(currentCutoffFreq);
+    
+    attenuatedInputLeft = lowPassFilterLeft.processSample(0, attenuatedInputLeft);
+    attenuatedInputRight = lowPassFilterRight.processSample(1, attenuatedInputRight);
+    
     std::fill(longHadamardLeft.begin(), longHadamardLeft.end(), 0.0f);
     std::fill(longHadamardRight.begin(), longHadamardRight.end(), 0.0f);
 
@@ -190,28 +195,11 @@ void LongDelayProcessor::process(const std::array<float, 4>& longDelayTimes,
         float irregularSampleLeft = getInterpolatedSample(delayBufferLeft[i], cumulativeIrregularDelayLeft);
         float irregularSampleRight = getInterpolatedSample(delayBufferRight[i], cumulativeIrregularDelayRight);
 
-
-        // Apply decay to both original and irregular delays
-        float decayFactor = dampValue;
-        float maxCutoffFreq = sampleRate * 0.45f; // Max cutoff is slightly below Nyquist
-        float minCutoffFreq = 20.0f;              // Minimum cutoff frequency to avoid sub-audio issues
-
-        // Map decay factor to cutoff frequency and clamp it to a valid range
-        float cutoffFreq = juce::jmap(decayFactor, 0.1f, 1.0f, minCutoffFreq, maxCutoffFreq);
-
-        // Set the cutoff frequency for the low-pass filters (single argument required)
-        lowPassFiltersLeft[i].setCutoffFrequency(juce::jlimit(minCutoffFreq, maxCutoffFreq, cutoffFreq));
-        lowPassFiltersRight[i].setCutoffFrequency(juce::jlimit(minCutoffFreq, maxCutoffFreq, cutoffFreq));
-
-        // Apply low-pass filtering
-        longHadamardLeft[i] = lowPassFiltersLeft[i].processSample(0, longHadamardLeft[i]);
-        longHadamardRight[i] = lowPassFiltersRight[i].processSample(1, longHadamardRight[i]);
-
         
-        longHadamardLeft[i] *= decayFactor;
-        longHadamardRight[i] *= decayFactor;
-        irregularSampleLeft *= decayFactor;
-        irregularSampleRight *= decayFactor;
+//        longHadamardLeft[i] *= decayFactor;
+//        longHadamardRight[i] *= decayFactor;
+//        irregularSampleLeft *= decayFactor;
+//        irregularSampleRight *= decayFactor;
 
         // Mix irregular delays into Hadamard arrays
         longHadamardLeft[i + 4] = irregularSampleLeft * bloomFeedbackGain;
