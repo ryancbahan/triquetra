@@ -74,6 +74,20 @@ void LongDelayProcessor::prepare(double newSampleRate, int numChannels, float ne
     {
         buffer.resize(delayBufferSize, 0.0f);
     }
+    
+    for (auto& filter : lowPassFiltersLeft)
+    {
+        filter.reset();
+        filter.prepare(spec);
+        filter.setType(juce::dsp::StateVariableTPTFilterType::lowpass);  // Set filter type
+    }
+
+    for (auto& filter : lowPassFiltersRight)
+    {
+        filter.reset();
+        filter.prepare(spec);
+        filter.setType(juce::dsp::StateVariableTPTFilterType::lowpass);  // Set filter type
+    }
 
     writePosition = 0;
 
@@ -98,7 +112,7 @@ void LongDelayProcessor::process(const std::array<float, 4>& longDelayTimes,
                                  std::array<float, 8>& longHadamardLeft,
                                  std::array<float, 8>& longHadamardRight,
                                  float inputSampleLeft, float inputSampleRight,
-                                 float currentFeedback, float smearValue)
+                                 float currentFeedback, float smearValue, float dampValue)
 {
     
     if (currentSmearValue != smearValue)
@@ -176,8 +190,24 @@ void LongDelayProcessor::process(const std::array<float, 4>& longDelayTimes,
         float irregularSampleLeft = getInterpolatedSample(delayBufferLeft[i], cumulativeIrregularDelayLeft);
         float irregularSampleRight = getInterpolatedSample(delayBufferRight[i], cumulativeIrregularDelayRight);
 
+
         // Apply decay to both original and irregular delays
-        float decayFactor = std::pow(decayRate, static_cast<float>(i));
+        float decayFactor = dampValue;
+        float maxCutoffFreq = sampleRate * 0.45f; // Max cutoff is slightly below Nyquist
+        float minCutoffFreq = 20.0f;              // Minimum cutoff frequency to avoid sub-audio issues
+
+        // Map decay factor to cutoff frequency and clamp it to a valid range
+        float cutoffFreq = juce::jmap(decayFactor, 0.1f, 1.0f, minCutoffFreq, maxCutoffFreq);
+
+        // Set the cutoff frequency for the low-pass filters (single argument required)
+        lowPassFiltersLeft[i].setCutoffFrequency(juce::jlimit(minCutoffFreq, maxCutoffFreq, cutoffFreq));
+        lowPassFiltersRight[i].setCutoffFrequency(juce::jlimit(minCutoffFreq, maxCutoffFreq, cutoffFreq));
+
+        // Apply low-pass filtering
+        longHadamardLeft[i] = lowPassFiltersLeft[i].processSample(0, longHadamardLeft[i]);
+        longHadamardRight[i] = lowPassFiltersRight[i].processSample(1, longHadamardRight[i]);
+
+        
         longHadamardLeft[i] *= decayFactor;
         longHadamardRight[i] *= decayFactor;
         irregularSampleLeft *= decayFactor;

@@ -299,6 +299,7 @@ void TriquetraAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juc
     float depthValue = depthParameter->load() / smoothedDelayTime;
     float clockValue = clockParameter->load();
     float smearValue = smearParameter->load();
+    float dampValue = dampParameter->load();
 
     updateModulation(getSampleRate(), depthValue);
 
@@ -353,7 +354,7 @@ void TriquetraAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juc
             // Process delays and feedback without matrix modulation
             shortDelayProcessor.process(shortDelayTimes, shortFeedbackLeft, shortFeedbackRight, modulationValue, stereoOffset, shortDelayOutputLeft, shortDelayOutputRight, inputSampleLeft, inputSampleRight, feedbackValue);
 
-            longDelayProcessor.process(longDelayTimes, longFeedbackLeft, longFeedbackRight, modulationValue, stereoOffset, longDelayOutputLeft, longDelayOutputRight, inputSampleLeft, inputSampleRight, feedbackValue, smearValue);
+            longDelayProcessor.process(longDelayTimes, longFeedbackLeft, longFeedbackRight, modulationValue, stereoOffset, longDelayOutputLeft, longDelayOutputRight, inputSampleLeft, inputSampleRight, feedbackValue, smearValue, dampValue);
 
             // Combine outputs from the processors for the wet signal
             std::tie(std::ignore, std::ignore, wetSignalLeft, wetSignalRight) = processAndSumSignals(

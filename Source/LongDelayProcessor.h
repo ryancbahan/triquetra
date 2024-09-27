@@ -4,7 +4,8 @@
 #include <array>
 #include <vector>
 #include <JuceHeader.h>
-#include "EnvelopeFollower.h" // Include the EnvelopeFollower header
+#include "EnvelopeFollower.h"
+#include <juce_dsp/juce_dsp.h>
 
 class LongDelayProcessor
 {
@@ -21,7 +22,7 @@ public:
                  std::array<float, 8>& longHadamardLeft,
                  std::array<float, 8>& longHadamardRight,
                  float inputSampleLeft, float inputSampleRight,
-                 float currentFeedback, float smearValue);
+                 float currentFeedback, float smearValue, float dampValue);
 
 private:
     // Sample rate
@@ -43,9 +44,9 @@ private:
     float decayRate = 0.0f;
 
     // Modulation variables
-    float modulationFrequency = 0.1f; // Adjust as needed
-    std::array<float, 4> modulationPhaseOffsets; // Offsets for staggered modulation
-    std::array<float, 4> modulationPhase;        // Modulation phases
+    float modulationFrequency = 0.1f;
+    std::array<float, 4> modulationPhaseOffsets;
+    std::array<float, 4> modulationPhase;
 
     // Irregular delay factors
     std::array<float, 4> irregularDelayFactors;
@@ -56,6 +57,9 @@ private:
     // Envelope followers for input samples
     EnvelopeFollower envelopeFollowerLeft;
     EnvelopeFollower envelopeFollowerRight;
+    
+    std::array<juce::dsp::StateVariableTPTFilter<float>, 4> lowPassFiltersLeft;
+    std::array<juce::dsp::StateVariableTPTFilter<float>, 4> lowPassFiltersRight;
 
     // Helper functions
     float getInterpolatedSample(const std::vector<float>& buffer, float delayInSamples);
