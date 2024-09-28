@@ -71,6 +71,7 @@ TriquetraAudioProcessor::TriquetraAudioProcessor()
     clockParameter = parameters.getRawParameterValue("clock");
     smearParameter = parameters.getRawParameterValue("smear");
     dampParameter = parameters.getRawParameterValue("damp");
+    spreadParameter = parameters.getRawParameterValue("spread");
 
 }
 
@@ -113,12 +114,15 @@ juce::AudioProcessorValueTreeState::ParameterLayout TriquetraAudioProcessor::cre
     
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
         juce::ParameterID("clock", 4), "Clock",
-        juce::NormalisableRange<float>(0.0f, 1.0f), 1.0f));
+        juce::NormalisableRange<float>(0.1f, 1.0f), 1.0f));
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
         juce::ParameterID("smear", 5), "Smear",
         juce::NormalisableRange<float>(0.0f, 0.5f), 0.0f));
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
         juce::ParameterID("damp", 6), "Damp",
+        juce::NormalisableRange<float>(0.0f, 1.0f), 0.0f));
+    params.push_back(std::make_unique<juce::AudioParameterFloat>(
+        juce::ParameterID("spread", 7), "Spread",
         juce::NormalisableRange<float>(0.0f, 1.0f), 0.5f));
     
     return { params.begin(), params.end() };
@@ -300,6 +304,8 @@ void TriquetraAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juc
     float clockValue = clockParameter->load();
     float smearValue = smearParameter->load();
     float dampValue = dampParameter->load();
+    float spreadValue = spreadParameter->load();
+
 
     updateModulation(getSampleRate(), depthValue);
 

@@ -35,6 +35,7 @@ private:
     juce::Slider clockParamSlider;
     juce::Slider smearParamSlider;
     juce::Slider dampParamSlider;
+    juce::Slider spreadParamSlider;
 
 
     void setupKnob(juce::Slider& slider, juce::RangedAudioParameter* parameter,
