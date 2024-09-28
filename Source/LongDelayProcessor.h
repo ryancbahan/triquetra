@@ -22,7 +22,7 @@ public:
                  std::array<float, 8>& longHadamardLeft,
                  std::array<float, 8>& longHadamardRight,
                  float inputSampleLeft, float inputSampleRight,
-                 float currentFeedback, float smearValue, float dampValue);
+                 float currentFeedback, float smearValue, float dampValue, float spreadValue);
 
 private:
     // Sample rate
@@ -30,7 +30,8 @@ private:
     float currentSmearValue = 0.0f; 
     std::array<juce::dsp::Oscillator<float>, 4> lfoOscillators;
     std::array<bool, 4> isDelayLineModulated;
-    
+    std::array<float, 4> irregularityFactors = { 1.0f, 1.4142f, 1.732f, 2.236f }; // 1, √2, √3, √5
+
     // Delay buffers
     int delayBufferSize = 0;
     std::array<std::vector<float>, 8> delayBufferLeft;

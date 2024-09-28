@@ -19,11 +19,6 @@ LongDelayProcessor::LongDelayProcessor()
     lowPassFilterLeft.setType(juce::dsp::StateVariableTPTFilterType::lowpass);
     lowPassFilterRight.setType(juce::dsp::StateVariableTPTFilterType::lowpass);
     currentCutoffFreq = 15000.0f;
-
-    // Initialize irregular delay factors
-    for (auto& factor : irregularDelayFactors) {
-        factor = static_cast<float>(dis(gen));
-    }
     
     for (int i = 0; i < 4; ++i)
     {
@@ -134,7 +129,7 @@ void LongDelayProcessor::process(
     float inputSampleRight,
     float currentFeedback,
     float smearValue,
-    float dampValue)
+    float dampValue, float spreadValue)
 {
     // Update smear value if it has changed
     if (currentSmearValue != smearValue)
@@ -223,8 +218,10 @@ void LongDelayProcessor::process(
         // --- Irregular Delay Behavior ---
 
         // Calculate irregular delay
-        float irregularDelayLeft = baseDelaySamplesLeft * irregularDelayFactors[i];
-        float irregularDelayRight = baseDelaySamplesRight * irregularDelayFactors[i];
+        float irregularFactor = irregularityFactors[i];
+
+        float irregularDelayLeft = baseDelaySamplesLeft * (1.0f + spreadValue * (irregularFactor - 1.0f));
+        float irregularDelayRight = baseDelaySamplesRight * (1.0f + spreadValue * (irregularFactor - 1.0f));
 
         // Alternate between shorter and longer irregular delays
         if (i % 2 == 0)
