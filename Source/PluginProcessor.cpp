@@ -327,8 +327,6 @@ void TriquetraAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juc
     float sampleRate = static_cast<float>(getSampleRate());
     const float stereoOffset = 0.02f * sampleRate;
 
-    // Hardcoded clock parameter (adjust this value to test different clock rates)
-    // 1.0 means normal rate, 0.5 means half rate, 0.25 quarter rate, etc.
     const float clockRate = clockValue;
 
     // Variables for clock-based sample processing
@@ -342,7 +340,7 @@ void TriquetraAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juc
         delayTime = std::min(delayTime, 4.0f);  // Ensure delay time does not exceed the buffer length (4 seconds)
     }
 
-    const float feedbackGain = 0.7f;
+    float feedbackGain = feedbackValue;
 
     for (int sample = 0; sample < buffer.getNumSamples(); ++sample)
     {
