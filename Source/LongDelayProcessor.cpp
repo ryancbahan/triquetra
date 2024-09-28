@@ -218,10 +218,17 @@ void LongDelayProcessor::process(
         // --- Irregular Delay Behavior ---
 
         // Calculate irregular delay
-        float irregularFactor = irregularityFactors[i];
+        const float maxDeviationSamples = sampleRate * 0.1f; // 100 milliseconds
+        const float minDeviationSamples = sampleRate * 0.01f; // Increased to 10 milliseconds
 
-        float irregularDelayLeft = baseDelaySamplesLeft * (1.0f + spreadValue * (irregularFactor - 1.0f));
-        float irregularDelayRight = baseDelaySamplesRight * (1.0f + spreadValue * (irregularFactor - 1.0f));
+        float deviationSamples = maxDeviationSamples * spreadValue * irregularityFactors[i];
+        
+        deviationSamples = (std::abs(deviationSamples) < minDeviationSamples) ?
+                (minDeviationSamples * (deviationSamples < 0 ? -1.0f : 1.0f)) : deviationSamples;
+
+
+        float irregularDelayLeft = baseDelaySamplesLeft + deviationSamples;
+        float irregularDelayRight = baseDelaySamplesRight + deviationSamples;
 
         // Alternate between shorter and longer irregular delays
         if (i % 2 == 0)
