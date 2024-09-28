@@ -28,7 +28,9 @@ private:
     // Sample rate
     double sampleRate = 44100.0;
     float currentSmearValue = 0.0f; 
-
+    std::array<juce::dsp::Oscillator<float>, 4> lfoOscillators;
+    std::array<bool, 4> isDelayLineModulated;
+    
     // Delay buffers
     int delayBufferSize = 0;
     std::array<std::vector<float>, 8> delayBufferLeft;
