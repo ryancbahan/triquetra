@@ -9,6 +9,7 @@ LongDelayProcessor::LongDelayProcessor()
 
     // Initialize the modulationPhase array
     modulationPhase.fill(0.0f);  // Start with all phases at 0
+    isDelayLineModulated = { true, false, true, false };
 
     // Constructor for irregular delay factors
     std::random_device rd;
@@ -22,6 +23,20 @@ LongDelayProcessor::LongDelayProcessor()
     // Initialize irregular delay factors
     for (auto& factor : irregularDelayFactors) {
         factor = static_cast<float>(dis(gen));
+    }
+    
+    for (int i = 0; i < 4; ++i)
+    {
+        // Initialize the oscillator with a sine wave
+        lfoOscillators[i].initialise([](float x) { return std::sin(x); }, 128);
+
+        // Assign different frequencies to each modulated delay line
+        if (isDelayLineModulated[i])
+        {
+            // Frequencies in Hz for each modulated delay line
+            float frequencies[] = { 0.1f, 0.0f, 0.15f, 0.0f }; // Zero frequency for unmodulated lines
+            lfoOscillators[i].setFrequency(frequencies[i]);
+        }
     }
 }
 
@@ -65,6 +80,15 @@ void LongDelayProcessor::prepare(double newSampleRate, int numChannels, float ne
         filter.reset();
         filter.prepare(spec);
     }
+    
+    for (int i = 0; i < 4; ++i)
+    {
+        if (isDelayLineModulated[i])
+        {
+            lfoOscillators[i].prepare(spec);
+            lfoOscillators[i].reset();
+        }
+    }
 
     delayBufferSize = static_cast<int>(sampleRate * 4.0);
 
@@ -98,88 +122,118 @@ void LongDelayProcessor::prepare(double newSampleRate, int numChannels, float ne
     envelopeFollowerRight.setNoiseGateThreshold(0.01f);     // Adjust as needed
 }
 
-void LongDelayProcessor::process(const std::array<float, 4>& longDelayTimes,
-                                 std::array<float, 8>& longFeedbackLeft,
-                                 std::array<float, 8>& longFeedbackRight,
-                                 float modulationValue, float stereoOffset,
-                                 std::array<float, 8>& longHadamardLeft,
-                                 std::array<float, 8>& longHadamardRight,
-                                 float inputSampleLeft, float inputSampleRight,
-                                 float currentFeedback, float smearValue, float dampValue)
+void LongDelayProcessor::process(
+    const std::array<float, 4>& longDelayTimes,
+    std::array<float, 8>& longFeedbackLeft,
+    std::array<float, 8>& longFeedbackRight,
+    float modulationDepth, // Modulation depth as a percentage (e.g., 0.0f to 0.05f)
+    float stereoOffset,
+    std::array<float, 8>& longHadamardLeft,
+    std::array<float, 8>& longHadamardRight,
+    float inputSampleLeft,
+    float inputSampleRight,
+    float currentFeedback,
+    float smearValue,
+    float dampValue)
 {
-    
+    // Update smear value if it has changed
     if (currentSmearValue != smearValue)
     {
         envelopeFollowerLeft.setAttackTime(smearValue);
         envelopeFollowerRight.setAttackTime(smearValue);
         currentSmearValue = smearValue;
     }
-    
-    // Process input samples through envelope followers
-    if (smearValue > 0)
+
+    // Process input samples through envelope followers if smear is active
+    if (smearValue > 0.0f)
     {
         inputSampleLeft = envelopeFollowerLeft.processSample(0, inputSampleLeft);
         inputSampleRight = envelopeFollowerRight.processSample(0, inputSampleRight);
     }
 
-    const float attenuationFactor = 1.0f / sqrt(4.0f);
-
+    // Apply attenuation to the input samples
+    const float attenuationFactor = 1.0f / std::sqrt(4.0f); // Adjust based on the number of delay lines
     float attenuatedInputLeft = inputSampleLeft * attenuationFactor;
     float attenuatedInputRight = inputSampleRight * attenuationFactor;
-    
-    float maxCutoffFreq = 15000.0f;  // Maximum cutoff frequency (minimal damping)
-    float minCutoffFreq = 250.0f;    // Minimum cutoff frequency (maximum damping)
+
+    // Damping using a low-pass filter
+    const float maxCutoffFreq = 15000.0f; // Maximum cutoff frequency (minimal damping)
+    const float minCutoffFreq = 250.0f;   // Minimum cutoff frequency (maximum damping)
     float targetCutoffFreq = juce::jmap(dampValue, 0.0f, 1.0f, maxCutoffFreq, minCutoffFreq);
 
     // Smoothly adjust the current cutoff frequency towards the target
-    currentCutoffFreq = currentCutoffFreq + (targetCutoffFreq - currentCutoffFreq) * 0.001f;
+    currentCutoffFreq += (targetCutoffFreq - currentCutoffFreq) * 0.001f;
     lowPassFilterLeft.setCutoffFrequency(currentCutoffFreq);
     lowPassFilterRight.setCutoffFrequency(currentCutoffFreq);
-    
+
+    // Apply the low-pass filter to the attenuated input samples
     attenuatedInputLeft = lowPassFilterLeft.processSample(0, attenuatedInputLeft);
     attenuatedInputRight = lowPassFilterRight.processSample(1, attenuatedInputRight);
-    
+
+    // Clear the Hadamard arrays for the current processing block
     std::fill(longHadamardLeft.begin(), longHadamardLeft.end(), 0.0f);
     std::fill(longHadamardRight.begin(), longHadamardRight.end(), 0.0f);
 
     float cumulativeIrregularDelayLeft = 0.0f;
     float cumulativeIrregularDelayRight = 0.0f;
 
+    // Process each delay line
     for (int i = 0; i < 4; ++i)
     {
-        // Increment the modulation phase for each delay line
-        modulationPhase[i] += modulationFrequency / sampleRate;
-        if (modulationPhase[i] >= 1.0f)
-            modulationPhase[i] -= 1.0f;
+        // Base delay times in samples
+        float baseDelaySamplesLeft = longDelayTimes[i] * static_cast<float>(sampleRate);
+        float baseDelaySamplesRight = baseDelaySamplesLeft - stereoOffset;
 
-        // Calculate the final modulation phase, adding staggered offsets
-        float finalModulationPhase = modulationPhase[i] + modulationPhaseOffsets[i];
-        if (finalModulationPhase >= 1.0f)
-            finalModulationPhase -= 1.0f;
+        // Ensure delay times are positive
+        baseDelaySamplesLeft = std::max(0.0f, baseDelaySamplesLeft);
+        baseDelaySamplesRight = std::max(0.0f, baseDelaySamplesRight);
 
-        // Calculate the modulated delay time using the staggered modulation
-        float modulatedDelay = std::sin(2.0f * juce::MathConstants<float>::pi * finalModulationPhase) * modulationValue;
+        // Calculate maximum modulation depth in samples (as a percentage of base delay time)
+        float maxModulationSamples = baseDelaySamplesLeft * modulationDepth;
 
-        float baseDelayLeft = std::max(0.0f, longDelayTimes[i] * static_cast<float>(sampleRate));
-        float baseDelayRight = std::max(0.0f, baseDelayLeft - stereoOffset);
+        float modulatedDelayLeft = baseDelaySamplesLeft;
+        float modulatedDelayRight = baseDelaySamplesRight;
 
-        // Modulate delay times and clamp them to prevent overflow
-        float originalDelayLeft = juce::jlimit(0.0f, static_cast<float>(delayBufferSize - 1), baseDelayLeft * (1.0f + modulatedDelay));
-        float originalDelayRight = juce::jlimit(0.0f, static_cast<float>(delayBufferSize - 1), baseDelayRight * (1.0f + modulatedDelay));
+        // Check if this delay line should be modulated
+        if (isDelayLineModulated[i])
+        {
+            // Get the next LFO sample (ranges from -1 to 1)
+            float lfoSample = lfoOscillators[i].processSample(0.0f);
 
-        // Get samples for original delays
-        longHadamardLeft[i] = getInterpolatedSample(delayBufferLeft[i], originalDelayLeft);
-       longHadamardRight[i] = getInterpolatedSample(delayBufferRight[i], originalDelayRight);
-        
+            // Scale the LFO sample to the modulation depth
+            float modulationAmount = lfoSample * maxModulationSamples;
+
+            // Apply modulation to delay times
+            modulatedDelayLeft += modulationAmount;
+            modulatedDelayRight += modulationAmount;
+        }
+
+        // Ensure modulated delay times are within buffer bounds
+        modulatedDelayLeft = juce::jlimit(0.0f, static_cast<float>(delayBufferSize - 1), modulatedDelayLeft);
+        modulatedDelayRight = juce::jlimit(0.0f, static_cast<float>(delayBufferSize - 1), modulatedDelayRight);
+
+        // Retrieve interpolated samples from the delay buffers
+        float delayedSampleLeft = getInterpolatedSample(delayBufferLeft[i], modulatedDelayLeft);
+        float delayedSampleRight = getInterpolatedSample(delayBufferRight[i], modulatedDelayRight);
+
+        // Store the delayed samples in the Hadamard arrays
+        longHadamardLeft[i] = delayedSampleLeft;
+        longHadamardRight[i] = delayedSampleRight;
+
+        // --- Irregular Delay Behavior ---
+
         // Calculate irregular delay
-        float irregularDelayLeft = baseDelayLeft * irregularDelayFactors[i];
-        float irregularDelayRight = baseDelayRight * irregularDelayFactors[i];
+        float irregularDelayLeft = baseDelaySamplesLeft * irregularDelayFactors[i];
+        float irregularDelayRight = baseDelaySamplesRight * irregularDelayFactors[i];
 
         // Alternate between shorter and longer irregular delays
-        if (i % 2 == 0) {
+        if (i % 2 == 0)
+        {
             irregularDelayLeft /= longSubdivisionsFactor;
             irregularDelayRight /= longSubdivisionsFactor;
-        } else {
+        }
+        else
+        {
             irregularDelayLeft *= longSubdivisionsFactor;
             irregularDelayRight *= longSubdivisionsFactor;
         }
@@ -199,24 +253,30 @@ void LongDelayProcessor::process(const std::array<float, 4>& longDelayTimes,
         longHadamardLeft[i + 4] = irregularSampleLeft * bloomFeedbackGain;
         longHadamardRight[i + 4] = irregularSampleRight * bloomFeedbackGain;
 
-        // Apply all-pass filtering for diffusion
+        // --- End of Irregular Delay Behavior ---
+
+        // Apply all-pass filters for diffusion
         longHadamardLeft[i] = allPassFiltersLong[i].processSample(longHadamardLeft[i]);
         longHadamardRight[i] = allPassFiltersLong[i].processSample(longHadamardRight[i]);
 
-        // Apply attenuation
+        // Apply attenuation to the filtered samples
         longHadamardLeft[i] *= attenuationFactor;
         longHadamardRight[i] *= attenuationFactor;
 
-        // Calculate feedback using the dynamic feedback parameter
-        longFeedbackLeft[i] = juce::jlimit(-0.95f, 0.95f, (longHadamardLeft[i] + longHadamardLeft[i + 4]) * currentFeedback);
-        longFeedbackRight[i] = juce::jlimit(-0.95f, 0.95f, (longHadamardRight[i] + longHadamardRight[i + 4]) * currentFeedback);
+        // Calculate feedback signals, combining original and irregular delayed samples
+        float combinedFeedbackLeft = longHadamardLeft[i] + longHadamardLeft[i + 4];
+        float combinedFeedbackRight = longHadamardRight[i] + longHadamardRight[i + 4];
 
-        // Update the delay buffer with the attenuated input sample and feedback
+        // Apply feedback gain and limit to prevent excessive buildup
+        longFeedbackLeft[i] = juce::jlimit(-0.95f, 0.95f, combinedFeedbackLeft * currentFeedback);
+        longFeedbackRight[i] = juce::jlimit(-0.95f, 0.95f, combinedFeedbackRight * currentFeedback);
+
+        // Write the input sample plus feedback into the delay buffers
         delayBufferLeft[i][writePosition] = attenuatedInputLeft + longFeedbackLeft[i];
         delayBufferRight[i][writePosition] = attenuatedInputRight + longFeedbackRight[i];
     }
 
-    // Increment write position in circular delay buffer
+    // Increment the write position for the delay buffers, wrapping around if necessary
     writePosition = (writePosition + 1) % delayBufferSize;
 }
 

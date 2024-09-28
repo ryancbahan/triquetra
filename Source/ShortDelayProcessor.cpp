@@ -12,6 +12,23 @@ ShortDelayProcessor::ShortDelayProcessor()
     currentCutoffFreq = 15000.0f;
     lowPassFilterLeft.setType(juce::dsp::StateVariableTPTFilterType::lowpass);
     lowPassFilterRight.setType(juce::dsp::StateVariableTPTFilterType::lowpass);
+    isDelayLineModulated = { true, false, true, false, true, false, true, false };
+    modulationFrequencies = { 0.1f, 0.0f, 0.13f, 0.0f, 0.16f, 0.0f, 0.19f, 0.0f }; // Frequencies in Hz
+
+    for (int i = 0; i < 8; ++i)
+    {
+        lfoOscillators[i].initialise([](float x) { return std::sin(x); }, 128);
+
+        if (isDelayLineModulated[i])
+        {
+            lfoOscillators[i].setFrequency(modulationFrequencies[i]);
+        }
+        else
+        {
+            // Set frequency to zero for unmodulated delay lines
+            lfoOscillators[i].setFrequency(0.0f);
+        }
+    }
     
     for (int i = 0; i < 8; ++i)
     {
@@ -49,7 +66,12 @@ void ShortDelayProcessor::prepare(double newSampleRate, int numChannels, float n
 
     for (auto& filter : allPassFiltersShort)
         filter.prepare(spec);
-
+    
+    for (int i = 0; i < 8; ++i)
+    {
+        lfoOscillators[i].prepare(spec);
+        lfoOscillators[i].reset();
+    }
     // Initialize delay buffers
     delayBufferSize = static_cast<int>(sampleRate * 4.0); // 4 seconds of delay buffer
     delayBufferLeft.resize(8, std::vector<float>(delayBufferSize, 0.0f));
@@ -61,85 +83,128 @@ void ShortDelayProcessor::prepare(double newSampleRate, int numChannels, float n
     writePosition = 0; // Initialize write position for circular buffer
 }
 
-void ShortDelayProcessor::process(const std::array<float, 8>& shortDelayTimes,
-                                  const std::array<float, 8>& shortFeedbackLeft,
-                                  const std::array<float, 8>& shortFeedbackRight,
-                                  float modulationValue, float stereoOffset,
-                                  std::array<float, 8>& shortDelayOutputLeft,
-                                  std::array<float, 8>& shortDelayOutputRight,
-                                  float inputSampleLeft, float inputSampleRight,
-                                  float currentFeedback, float dampValue)
+void ShortDelayProcessor::process(
+    const std::array<float, 8>& shortDelayTimes,
+    std::array<float, 8>& shortFeedbackLeft,
+    std::array<float, 8>& shortFeedbackRight,
+    float modulationDepth,
+    float stereoOffset,
+    std::array<float, 8>& shortDelayOutputLeft,
+    std::array<float, 8>& shortDelayOutputRight,
+    float inputSampleLeft,
+    float inputSampleRight,
+    float currentFeedback,
+    float dampValue)
 {
     currentFeedback = juce::jlimit(0.0f, 1.0f, currentFeedback);  // Ensure feedback is in the valid range
 
-    // Prime number ratios for irregular phase offsets
-    std::vector<int> primeRatios = {11, 13, 17, 19, 23, 29, 31, 37};
-    
-    float maxCutoffFreq = 15000.0f;  // Maximum cutoff frequency (minimal damping)
-    float minCutoffFreq = 250.0f;    // Minimum cutoff frequency (maximum damping)
+    // Damping using a low-pass filter
+    const float maxCutoffFreq = 15000.0f;
+    const float minCutoffFreq = 250.0f;
     float targetCutoffFreq = juce::jmap(dampValue, 0.0f, 1.0f, maxCutoffFreq, minCutoffFreq);
+
+    // Smoothly adjust the current cutoff frequency towards the target
+    currentCutoffFreq += (targetCutoffFreq - currentCutoffFreq) * 0.001f;
+    lowPassFilterLeft.setCutoffFrequency(currentCutoffFreq);
+    lowPassFilterRight.setCutoffFrequency(currentCutoffFreq);
+
+    // Apply the low-pass filter to the input samples
+    float filteredInputLeft = lowPassFilterLeft.processSample(0, inputSampleLeft);
+    float filteredInputRight = lowPassFilterRight.processSample(1, inputSampleRight);
 
     for (int i = 0; i < 8; ++i)
     {
-        // Calculate base modulation frequency as a 1/4 note of the current delay time
-        float baseModulationTime = shortDelayTimes[i] * 4.0f;  // 1/4 note modulation time, slower and more subtle
+        // Base delay times in samples
+        float baseDelaySamplesLeft = shortDelayTimes[i] * static_cast<float>(sampleRate);
+        float baseDelaySamplesRight = baseDelaySamplesLeft + stereoOffset;
 
-        // Multiply the base modulation frequency by prime ratios to get longer tremolo periods
-        modulationFrequencies[i] = (1.0f / baseModulationTime) * static_cast<float>(primeRatios[i]);
+        // Calculate maximum modulation depth in samples (as a percentage of base delay time)
+        float maxModulationSamples = baseDelaySamplesLeft * modulationDepth;
 
-        // Increment the modulation phase for this delay line
-        modulationPhases[i] += modulationFrequencies[i] / static_cast<float>(sampleRate);
+        float modulatedDelayLeft = baseDelaySamplesLeft;
+        float modulatedDelayRight = baseDelaySamplesRight;
 
-        if (modulationPhases[i] >= 1.0f)
-            modulationPhases[i] -= 1.0f;
+        // Check if this delay line should be modulated
+        if (isDelayLineModulated[i])
+        {
+            // Get the next LFO sample (ranges from -1 to 1)
+            float lfoSample = lfoOscillators[i].processSample(0.0f);
 
-        // Apply the phase offset and calculate the tremolo factor
-        // Reduce the modulation depth (0.5 to reduce intensity of tremolo)
-        float tremoloFactor = 1.0f + (modulationValue * 0.25f) * std::sin(1.0f * juce::MathConstants<float>::pi * (modulationPhases[i] + phaseOffsets[i]));
+            // Calculate modulation amount in samples
+            float modulationAmount = lfoSample * maxModulationSamples;
 
-        // Modulate the amplitude (tremolo) instead of modulating delay time
-        float modulatedInputLeft = inputSampleLeft * tremoloFactor;
-        float modulatedInputRight = inputSampleRight * tremoloFactor;
-        
-        currentCutoffFreq = currentCutoffFreq + (targetCutoffFreq - currentCutoffFreq) * 0.001f;
-        lowPassFilterLeft.setCutoffFrequency(currentCutoffFreq);
-        lowPassFilterRight.setCutoffFrequency(currentCutoffFreq);
-        
-        modulatedInputLeft = lowPassFilterLeft.processSample(0, modulatedInputLeft);
-        modulatedInputRight = lowPassFilterRight.processSample(1, modulatedInputRight);
+            // Apply modulation to delay times
+            modulatedDelayLeft = baseDelaySamplesLeft + modulationAmount;
+            modulatedDelayRight = baseDelaySamplesRight + modulationAmount;
 
-        float baseDelayLeft = shortDelayTimes[i] * sampleRate;
-        float baseDelayRight = baseDelayLeft + stereoOffset;
+            // Limit modulated delay times
+            float minDelaySamples = baseDelaySamplesLeft * 0.95f; // No less than 5% decrease
+            float maxDelaySamples = baseDelaySamplesLeft * 1.05f; // No more than 5% increase
+            modulatedDelayLeft = juce::jlimit(minDelaySamples, maxDelaySamples, modulatedDelayLeft);
+            modulatedDelayRight = juce::jlimit(minDelaySamples, maxDelaySamples, modulatedDelayRight);
+        }
 
-        // Fetch interpolated samples from delay buffer (output will be 100% wet)
-        shortDelayOutputLeft[i] = getInterpolatedSample(delayBufferLeft[i], baseDelayLeft) + shortFeedbackLeft[i] * currentFeedback;
-        shortDelayOutputRight[i] = getInterpolatedSample(delayBufferRight[i], baseDelayRight) + shortFeedbackRight[i] * currentFeedback;
+        // Ensure modulated delay times are within buffer bounds
+        modulatedDelayLeft = juce::jlimit(1.0f, static_cast<float>(delayBufferSize - 1), modulatedDelayLeft);
+        modulatedDelayRight = juce::jlimit(1.0f, static_cast<float>(delayBufferSize - 1), modulatedDelayRight);
 
-        // Apply all-pass filtering and update feedback
-        shortDelayOutputLeft[i] = allPassFiltersShort[i].processSample(shortDelayOutputLeft[i]);
-        shortDelayOutputRight[i] = allPassFiltersShort[i].processSample(shortDelayOutputRight[i]);
+        // Fetch interpolated samples from delay buffer (already includes feedback)
+        shortDelayOutputLeft[i] = getInterpolatedSample(delayBufferLeft[i], modulatedDelayLeft);
+        shortDelayOutputRight[i] = getInterpolatedSample(delayBufferRight[i], modulatedDelayRight);
 
-        // Diffusion and additional filtering
+        // Apply all-pass filtering and diffusion
         shortDelayOutputLeft[i] = diffusionAmount * allPassFiltersShort[i].processSample(shortDelayOutputLeft[i]);
         shortDelayOutputRight[i] = diffusionAmount * allPassFiltersShort[i].processSample(shortDelayOutputRight[i]);
 
-        // Write the modulated input sample to the delay buffer (using the modulated input sample)
-        delayBufferLeft[i][writePosition] = modulatedInputLeft;
-        delayBufferRight[i][writePosition] = modulatedInputRight;
+        // Calculate feedback samples
+        float feedbackSampleLeft = shortDelayOutputLeft[i] * currentFeedback;
+        float feedbackSampleRight = shortDelayOutputRight[i] * currentFeedback;
+
+        // Write the filtered input sample plus feedback to the delay buffer
+        delayBufferLeft[i][writePosition] = filteredInputLeft + feedbackSampleLeft;
+        delayBufferRight[i][writePosition] = filteredInputRight + feedbackSampleRight;
+
+        // Update feedback variables
+        shortFeedbackLeft[i] = feedbackSampleLeft;
+        shortFeedbackRight[i] = feedbackSampleRight;
     }
 
     // Update write position in circular delay buffer
     writePosition = (writePosition + 1) % delayBufferSize;
 }
 
+
+
 float ShortDelayProcessor::getInterpolatedSample(const std::vector<float>& buffer, float delayInSamples)
 {
-    int readPosition = (writePosition - static_cast<int>(delayInSamples) + delayBufferSize) % delayBufferSize;
-    float fraction = delayInSamples - static_cast<int>(delayInSamples);
-    int nextPosition = (readPosition + 1) % delayBufferSize;
+    int delayInt = static_cast<int>(delayInSamples);
+    float frac = delayInSamples - delayInt;
 
-    return buffer[readPosition] + fraction * (buffer[nextPosition] - buffer[readPosition]);
+    // Wrap read positions around the buffer
+    int idx0 = (writePosition - delayInt - 1 + delayBufferSize) % delayBufferSize;
+    int idx1 = (writePosition - delayInt + delayBufferSize) % delayBufferSize;
+    int idx2 = (writePosition - delayInt + 1 + delayBufferSize) % delayBufferSize;
+    int idx3 = (writePosition - delayInt + 2 + delayBufferSize) % delayBufferSize;
+
+    // Fetch samples
+    float y0 = buffer[idx0];
+    float y1 = buffer[idx1];
+    float y2 = buffer[idx2];
+    float y3 = buffer[idx3];
+
+    // Cubic interpolation coefficients
+    float a0 = y3 - y2 - y0 + y1;
+    float a1 = y0 - y1 - a0;
+    float a2 = y2 - y0;
+    float a3 = y1;
+
+    // Calculate interpolated sample
+    float fracSquared = frac * frac;
+    float fracCubed = fracSquared * frac;
+
+    return a0 * fracCubed + a1 * fracSquared + a2 * frac + a3;
 }
+
 
 void ShortDelayProcessor::updateDelayBuffer(float inputLeft, float inputRight)
 {
