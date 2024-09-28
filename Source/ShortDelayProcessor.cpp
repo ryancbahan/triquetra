@@ -87,7 +87,7 @@ void ShortDelayProcessor::process(
     const std::array<float, 8>& shortDelayTimes,
     std::array<float, 8>& shortFeedbackLeft,
     std::array<float, 8>& shortFeedbackRight,
-    float modulationValue, // Modulation depth as a percentage (e.g., 0.0f to 0.05f)
+    float modulationDepth,
     float stereoOffset,
     std::array<float, 8>& shortDelayOutputLeft,
     std::array<float, 8>& shortDelayOutputRight,
@@ -99,8 +99,8 @@ void ShortDelayProcessor::process(
     currentFeedback = juce::jlimit(0.0f, 1.0f, currentFeedback);  // Ensure feedback is in the valid range
 
     // Damping using a low-pass filter
-    const float maxCutoffFreq = 15000.0f;  // Maximum cutoff frequency (minimal damping)
-    const float minCutoffFreq = 250.0f;    // Minimum cutoff frequency (maximum damping)
+    const float maxCutoffFreq = 15000.0f;
+    const float minCutoffFreq = 250.0f;
     float targetCutoffFreq = juce::jmap(dampValue, 0.0f, 1.0f, maxCutoffFreq, minCutoffFreq);
 
     // Smoothly adjust the current cutoff frequency towards the target
@@ -112,16 +112,11 @@ void ShortDelayProcessor::process(
     float filteredInputLeft = lowPassFilterLeft.processSample(0, inputSampleLeft);
     float filteredInputRight = lowPassFilterRight.processSample(1, inputSampleRight);
 
-    // Process each delay line
     for (int i = 0; i < 8; ++i)
     {
         // Base delay times in samples
         float baseDelaySamplesLeft = shortDelayTimes[i] * static_cast<float>(sampleRate);
         float baseDelaySamplesRight = baseDelaySamplesLeft + stereoOffset;
-
-        // Ensure delay times are positive and within buffer bounds
-        baseDelaySamplesLeft = juce::jlimit(0.0f, static_cast<float>(delayBufferSize - 1), baseDelaySamplesLeft);
-        baseDelaySamplesRight = juce::jlimit(0.0f, static_cast<float>(delayBufferSize - 1), baseDelaySamplesRight);
 
         // Calculate maximum modulation depth in samples (as a percentage of base delay time)
         float maxModulationSamples = baseDelaySamplesLeft * modulationDepth;
@@ -135,34 +130,49 @@ void ShortDelayProcessor::process(
             // Get the next LFO sample (ranges from -1 to 1)
             float lfoSample = lfoOscillators[i].processSample(0.0f);
 
-            // Scale the LFO sample to the modulation depth
+            // Calculate modulation amount in samples
             float modulationAmount = lfoSample * maxModulationSamples;
 
             // Apply modulation to delay times
-            modulatedDelayLeft += modulationAmount;
-            modulatedDelayRight += modulationAmount;
+            modulatedDelayLeft = baseDelaySamplesLeft + modulationAmount;
+            modulatedDelayRight = baseDelaySamplesRight + modulationAmount;
+
+            // Limit modulated delay times
+            float minDelaySamples = baseDelaySamplesLeft * 0.95f; // No less than 5% decrease
+            float maxDelaySamples = baseDelaySamplesLeft * 1.05f; // No more than 5% increase
+            modulatedDelayLeft = juce::jlimit(minDelaySamples, maxDelaySamples, modulatedDelayLeft);
+            modulatedDelayRight = juce::jlimit(minDelaySamples, maxDelaySamples, modulatedDelayRight);
         }
 
         // Ensure modulated delay times are within buffer bounds
-        modulatedDelayLeft = juce::jlimit(0.0f, static_cast<float>(delayBufferSize - 1), modulatedDelayLeft);
-        modulatedDelayRight = juce::jlimit(0.0f, static_cast<float>(delayBufferSize - 1), modulatedDelayRight);
+        modulatedDelayLeft = juce::jlimit(1.0f, static_cast<float>(delayBufferSize - 1), modulatedDelayLeft);
+        modulatedDelayRight = juce::jlimit(1.0f, static_cast<float>(delayBufferSize - 1), modulatedDelayRight);
 
-        // Fetch interpolated samples from delay buffer (include feedback)
-        shortDelayOutputLeft[i] = getInterpolatedSample(delayBufferLeft[i], modulatedDelayLeft) + shortFeedbackLeft[i] * currentFeedback;
-        shortDelayOutputRight[i] = getInterpolatedSample(delayBufferRight[i], modulatedDelayRight) + shortFeedbackRight[i] * currentFeedback;
+        // Fetch interpolated samples from delay buffer (already includes feedback)
+        shortDelayOutputLeft[i] = getInterpolatedSample(delayBufferLeft[i], modulatedDelayLeft);
+        shortDelayOutputRight[i] = getInterpolatedSample(delayBufferRight[i], modulatedDelayRight);
 
         // Apply all-pass filtering and diffusion
         shortDelayOutputLeft[i] = diffusionAmount * allPassFiltersShort[i].processSample(shortDelayOutputLeft[i]);
         shortDelayOutputRight[i] = diffusionAmount * allPassFiltersShort[i].processSample(shortDelayOutputRight[i]);
 
+        // Calculate feedback samples
+        float feedbackSampleLeft = shortDelayOutputLeft[i] * currentFeedback;
+        float feedbackSampleRight = shortDelayOutputRight[i] * currentFeedback;
+
         // Write the filtered input sample plus feedback to the delay buffer
-        delayBufferLeft[i][writePosition] =  shortDelayOutputLeft[i] * modulationFeedbackAmount;
-        delayBufferRight[i][writePosition] =  shortDelayOutputRight[i] * modulationFeedbackAmount;
+        delayBufferLeft[i][writePosition] = filteredInputLeft + feedbackSampleLeft;
+        delayBufferRight[i][writePosition] = filteredInputRight + feedbackSampleRight;
+
+        // Update feedback variables
+        shortFeedbackLeft[i] = feedbackSampleLeft;
+        shortFeedbackRight[i] = feedbackSampleRight;
     }
 
     // Update write position in circular delay buffer
     writePosition = (writePosition + 1) % delayBufferSize;
 }
+
 
 
 float ShortDelayProcessor::getInterpolatedSample(const std::vector<float>& buffer, float delayInSamples)
