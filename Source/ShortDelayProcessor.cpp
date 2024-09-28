@@ -177,12 +177,34 @@ void ShortDelayProcessor::process(
 
 float ShortDelayProcessor::getInterpolatedSample(const std::vector<float>& buffer, float delayInSamples)
 {
-    int readPosition = (writePosition - static_cast<int>(delayInSamples) + delayBufferSize) % delayBufferSize;
-    float fraction = delayInSamples - static_cast<int>(delayInSamples);
-    int nextPosition = (readPosition + 1) % delayBufferSize;
+    int delayInt = static_cast<int>(delayInSamples);
+    float frac = delayInSamples - delayInt;
 
-    return buffer[readPosition] + fraction * (buffer[nextPosition] - buffer[readPosition]);
+    // Wrap read positions around the buffer
+    int idx0 = (writePosition - delayInt - 1 + delayBufferSize) % delayBufferSize;
+    int idx1 = (writePosition - delayInt + delayBufferSize) % delayBufferSize;
+    int idx2 = (writePosition - delayInt + 1 + delayBufferSize) % delayBufferSize;
+    int idx3 = (writePosition - delayInt + 2 + delayBufferSize) % delayBufferSize;
+
+    // Fetch samples
+    float y0 = buffer[idx0];
+    float y1 = buffer[idx1];
+    float y2 = buffer[idx2];
+    float y3 = buffer[idx3];
+
+    // Cubic interpolation coefficients
+    float a0 = y3 - y2 - y0 + y1;
+    float a1 = y0 - y1 - a0;
+    float a2 = y2 - y0;
+    float a3 = y1;
+
+    // Calculate interpolated sample
+    float fracSquared = frac * frac;
+    float fracCubed = fracSquared * frac;
+
+    return a0 * fracCubed + a1 * fracSquared + a2 * frac + a3;
 }
+
 
 void ShortDelayProcessor::updateDelayBuffer(float inputLeft, float inputRight)
 {

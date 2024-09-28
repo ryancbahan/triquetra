@@ -370,7 +370,7 @@ void TriquetraAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juc
             // Process delays and feedback without matrix modulation
             shortDelayProcessor.process(
                 shortDelayTimes, shortFeedbackLeft, shortFeedbackRight,
-                modulationDepthPercentage, stereoOffset,
+                (modulationDepthPercentage / 2), stereoOffset,
                 shortDelayOutputLeft, shortDelayOutputRight,
                 inputSampleLeft, inputSampleRight,
                 feedbackValue, dampValue);
