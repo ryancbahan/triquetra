@@ -36,6 +36,7 @@ public:
     std::atomic<float>* clockParameter = nullptr;
     std::atomic<float>* smearParameter = nullptr;
     std::atomic<float>* dampParameter = nullptr;
+    std::atomic<float>* spreadParameter = nullptr;
 
     juce::SmoothedValue<float> delayTimeSmoothed;
 
@@ -74,6 +75,8 @@ private:
     ShortDelayProcessor shortDelayProcessor;
     LongDelayProcessor longDelayProcessor;
     
+    void updateLongDelayTimes(float baseDelayTime, float spreadValue);
+
     float previousPeakAmplitude = 0.0f;
     int silentSampleCount = 0;
     const int silentSampleThreshold = 4410; // About 100ms at 44.1kHz
@@ -106,7 +109,8 @@ private:
     std::array<float, 4> longDelayTimes;
     std::array<float, 8> modulatedShortDelayTimes;
     std::array<float, 8> modulatedLongDelayTimes;
-    
+    juce::SmoothedValue<float> spreadSmoothed;
+
     void updateShortDelayTimes(float delayTime);
 
     std::tuple<float, float, float, float> processAndSumSignals(

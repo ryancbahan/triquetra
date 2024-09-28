@@ -71,6 +71,7 @@ TriquetraAudioProcessor::TriquetraAudioProcessor()
     clockParameter = parameters.getRawParameterValue("clock");
     smearParameter = parameters.getRawParameterValue("smear");
     dampParameter = parameters.getRawParameterValue("damp");
+    spreadParameter = parameters.getRawParameterValue("spread");
 
 }
 
@@ -113,12 +114,15 @@ juce::AudioProcessorValueTreeState::ParameterLayout TriquetraAudioProcessor::cre
     
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
         juce::ParameterID("clock", 4), "Clock",
-        juce::NormalisableRange<float>(0.0f, 1.0f), 1.0f));
+        juce::NormalisableRange<float>(0.1f, 1.0f), 1.0f));
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
         juce::ParameterID("smear", 5), "Smear",
         juce::NormalisableRange<float>(0.0f, 0.5f), 0.0f));
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
         juce::ParameterID("damp", 6), "Damp",
+        juce::NormalisableRange<float>(0.0f, 1.0f), 0.0f));
+    params.push_back(std::make_unique<juce::AudioParameterFloat>(
+        juce::ParameterID("spread", 7), "Spread",
         juce::NormalisableRange<float>(0.0f, 1.0f), 0.5f));
     
     return { params.begin(), params.end() };
@@ -236,6 +240,23 @@ void TriquetraAudioProcessor::updateShortDelayTimes(float delayTime)
     shortDelayTimes[7] = baseTime * 0.9f;  // Another slightly shorter reflection
 }
 
+void TriquetraAudioProcessor::updateLongDelayTimes(float baseDelayTime, float spreadValue)
+{
+    longDelayTimes[0] = baseDelayTime;  // First delay time always equals the base delay time
+
+    for (int i = 1; i < longDelayTimes.size(); ++i)
+    {
+        float evenSpacing = static_cast<float>(i) * 0.5f;
+        float nonLinearFactor = (std::pow(static_cast<float>(i + 1), 1.5f) - static_cast<float>(i + 1)) / 2.0f;
+        float irregularSpacing = evenSpacing + (spreadValue * nonLinearFactor);
+        
+        longDelayTimes[i] = baseDelayTime * (1.0f + irregularSpacing);
+
+        // Ensure the delay time doesn't exceed the maximum allowed delay (4 seconds)
+        longDelayTimes[i] = std::min(longDelayTimes[i], 4.0f);
+    }
+}
+
 void TriquetraAudioProcessor::prepareToPlay(double sampleRate, int samplesPerBlock)
 {
     // Prepare the delay buffer
@@ -249,9 +270,11 @@ void TriquetraAudioProcessor::prepareToPlay(double sampleRate, int samplesPerBlo
     shortFeedbackRight.fill(0.0f);
     longFeedbackLeft.fill(0.0f);
     longFeedbackRight.fill(0.0f);
-
+    spreadSmoothed.reset(sampleRate, 0.05);  // 50ms smoothing time, adjust as needed
+        spreadSmoothed.setCurrentAndTargetValue(spreadParameter->load());
     
-    delayTimeSmoothed.reset(sampleRate, 0.005f); // Set the smoothing time to, say, 50ms
+    delayTimeSmoothed.reset(sampleRate, 0.05f); // Set the smoothing time to, say, 50ms
+    delayTimeSmoothed.setCurrentAndTargetValue(delayTimeParameter->load());
 
     // Reset processors (e.g., filters and delay lines)
     reverbProcessor.prepare(sampleRate, samplesPerBlock);
@@ -289,19 +312,11 @@ void TriquetraAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juc
     auto totalNumInputChannels = getTotalNumInputChannels();
     auto totalNumOutputChannels = getTotalNumOutputChannels();
 
-    // Get and smooth delayTimeParameter to avoid abrupt changes
-    float targetDelayTimeValue = delayTimeParameter->load();
-    delayTimeSmoothed.setTargetValue(targetDelayTimeValue);  // Set the target value
-    float smoothedDelayTime = delayTimeSmoothed.getNextValue();  // Get the smoothed value
-
     float mixValue = mixParameter->load();
     float feedbackValue = feedbackParameter->load();
-    float depthValue = depthParameter->load() / smoothedDelayTime;
     float clockValue = clockParameter->load();
     float smearValue = smearParameter->load();
     float dampValue = dampParameter->load();
-
-    updateModulation(getSampleRate(), depthValue);
 
     if (totalNumOutputChannels < 2) return;
 
@@ -321,15 +336,6 @@ void TriquetraAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juc
     static float lastProcessedWetRight = 0.0f;
     static float clockAccumulator = 0.0f;
 
-    // Dynamically calculate longDelayTimes based on smoothed delay time
-    longDelayTimes[0] = smoothedDelayTime;  // First value is the smoothed delay time
-    for (int i = 1; i < longDelayTimes.size(); ++i)
-    {
-        longDelayTimes[i] = longDelayTimes[i - 1] * 1.25f;  // Each subsequent value is 25% more
-    }
-    
-    updateShortDelayTimes(smoothedDelayTime);
-
     // Ensure that all delay times are within valid bounds
     for (float& delayTime : longDelayTimes)
     {
@@ -340,6 +346,17 @@ void TriquetraAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juc
 
     for (int sample = 0; sample < buffer.getNumSamples(); ++sample)
     {
+        float targetDelayTimeValue = delayTimeParameter->load();
+        delayTimeSmoothed.setTargetValue(targetDelayTimeValue);
+        float smoothedDelayTime = delayTimeSmoothed.getNextValue();  // Get the smoothed value
+        float depthValue = depthParameter->load() / smoothedDelayTime;
+        updateModulation(getSampleRate(), depthValue);
+        float spreadValue = spreadParameter->load();
+        spreadSmoothed.setTargetValue(spreadValue);
+        float smoothedSpreadValue = spreadSmoothed.getNextValue();
+        updateLongDelayTimes(smoothedDelayTime, smoothedSpreadValue);
+        updateShortDelayTimes(smoothedDelayTime);
+        
         float inputSampleLeft = buffer.getSample(0, sample);
         float inputSampleRight = totalNumInputChannels > 1 ? buffer.getSample(1, sample) : inputSampleLeft;
 

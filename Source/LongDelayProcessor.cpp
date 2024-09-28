@@ -195,12 +195,6 @@ void LongDelayProcessor::process(const std::array<float, 4>& longDelayTimes,
         float irregularSampleLeft = getInterpolatedSample(delayBufferLeft[i], cumulativeIrregularDelayLeft);
         float irregularSampleRight = getInterpolatedSample(delayBufferRight[i], cumulativeIrregularDelayRight);
 
-        
-//        longHadamardLeft[i] *= decayFactor;
-//        longHadamardRight[i] *= decayFactor;
-//        irregularSampleLeft *= decayFactor;
-//        irregularSampleRight *= decayFactor;
-
         // Mix irregular delays into Hadamard arrays
         longHadamardLeft[i + 4] = irregularSampleLeft * bloomFeedbackGain;
         longHadamardRight[i + 4] = irregularSampleRight * bloomFeedbackGain;
